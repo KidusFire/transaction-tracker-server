@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Company Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f4f5f7; }
+    h1 { margin-bottom: 4px; }
+    h2 { margin-top: 32px; margin-bottom: 10px; font-size: 18px; }
+    .status { font-size: 13px; color: #888; margin-bottom: 20px; }
+    .status.connected { color: #2e8b57; }
+    .summary { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+    .card { background: white; border-radius: 8px; padding: 16px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .card .label { font-size: 13px; color: #888; }
+    .card .value { font-size: 24px; font-weight: bold; }
+    .income .value { color: #2e8b57; }
+    .expense .value { color: #c0392b; }
+    .net .value { color: #2c3e50; }
+    .lowstock .value { color: #d68910; }
+    table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; margin-bottom: 20px; }
+    th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid #eee; font-size: 14px; }
+    th { background: #fafafa; color: #666; }
+    .type-income { color: #2e8b57; font-weight: bold; }
+    .type-expense { color: #c0392b; font-weight: bold; }
+    .direction-in { color: #2e8b57; font-weight: bold; }
+    .direction-out { color: #c0392b; font-weight: bold; }
+    .new-row { animation: flash 1.5s ease-out; }
+    .low-stock-row { background: #fff8e1; }
+    @keyframes flash { from { background: #fff3cd; } to { background: white; } }
+  </style>
+</head>
+<body>
+  <h1>Live Company Dashboard</h1>
+  <div id="status" class="status">Connecting...</div>
+
+  <div class="summary">
+    <div class="card income"><div class="label">Today's Income</div><div class="value" id="income-total">0</div></div>
+    <div class="card expense"><div class="label">Today's Expenses</div><div class="value" id="expense-total">0</div></div>
+    <div class="card net"><div class="label">Net</div><div class="value" id="net-total">0</div></div>
+    <div class="card lowstock"><div class="label">Low Stock Items</div><div class="value" id="lowstock-total">0</div></div>
+  </div>
+
+  <h2>Employees</h2>
+  <div style="background:white; border-radius:8px; padding:16px; margin-bottom:20px;">
+    <div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;">
+      <input type="text" id="new-emp-username" placeholder="username" style="flex:1; min-width:120px; padding:8px; border:1px solid #ddd; border-radius:6px;">
+      <input type="password" id="new-emp-password" placeholder="password" style="flex:1; min-width:120px; padding:8px; border:1px solid #ddd; border-radius:6px;">
+      <input type="text" id="new-emp-name" placeholder="full name (optional)" style="flex:1; min-width:120px; padding:8px; border:1px solid #ddd; border-radius:6px;">
+      <button onclick="addEmployee()" style="padding:8px 16px; background:#2c3e50; color:white; border:none; border-radius:6px; cursor:pointer;">Add Employee</button>
+    </div>
+    <div id="emp-error" style="color:#c0392b; font-size:13px; margin-bottom:10px;"></div>
+    <table>
+      <thead><tr><th>Username</th><th>Full Name</th><th>Status</th><th></th></tr></thead>
+      <tbody id="emp-body"></tbody>
+    </table>
+  </div>
+
+  <h2>Transactions</h2>
+  <table>
+    <thead><tr><th>Time</th><th>Employee</th><th>Type</th><th>Amount</th><th>Category</th><th>Note</th></tr></thead>
+    <tbody id="tx-body"></tbody>
+  </table>
+
+  <h2>Inventory</h2>
+  <table>
+    <thead><tr><th>SKU</th><th>Name</th><th>Qty on Hand</th><th>Unit</th><th>Reorder Level</th></tr></thead>
+    <tbody id="inv-body"></tbody>
+  </table>
+
+  <h2>Recent Stock Movements</h2>
+  <table>
+    <thead><tr><th>Item</th><th>Direction</th><th>Qty</th><th>New Qty on Hand</th><th>Reason</th></tr></thead>
+    <tbody id="movement-body"></tbody>
+  </table>
+
+  <script>
+    const txBody = document.getElementById("tx-body");
+    const invBody = document.getElementById("inv-body");
+    const movementBody = document.getElementById("movement-body");
+    const statusEl = document.getElementById("status");
+
+    let todayIncome = 0, todayExpense = 0;
+    let inventoryItems = {};   // id -> item data, kept in sync live
+
+    const dashUser = prompt("Dashboard username:");
+    const dashPass = prompt("Dashboard password:");
+    const authHeader = "Basic " + btoa(`${dashUser}:${dashPass}`);
+
+    function updateSummary() {
+      document.getElementById("income-total").textContent = todayIncome.toLocaleString();
+      document.getElementById("expense-total").textContent = todayExpense.toLocaleString();
+      document.getElementById("net-total").textContent = (todayIncome - todayExpense).toLocaleString();
+      const lowCount = Object.values(inventoryItems).filter(i => i.quantity_on_hand <= i.reorder_level).length;
+      document.getElementById("lowstock-total").textContent = lowCount;
+    }
+
+    function addTxRow(tx, highlight) {
+      const row = document.createElement("tr");
+      if (highlight) row.classList.add("new-row");
+      const time = new Date(tx.created_at).toLocaleTimeString();
+      row.innerHTML = `
+        <td>${time}</td><td>${tx.employee_id}</td>
+        <td class="type-${tx.type}">${tx.type}</td>
+        <td>${tx.amount.toLocaleString()}</td><td>${tx.category}</td><td>${tx.note || ""}</td>`;
+      txBody.prepend(row);
+    }
+
+    function renderInventoryTable() {
+      invBody.innerHTML = "";
+      Object.values(inventoryItems).forEach(item => {
+        const row = document.createElement("tr");
+        const isLow = item.quantity_on_hand <= item.reorder_level;
+        if (isLow) row.classList.add("low-stock-row");
+        row.innerHTML = `
+          <td>${item.sku}</td><td>${item.name}</td>
+          <td>${item.quantity_on_hand}${isLow ? " ⚠" : ""}</td>
+          <td>${item.unit}</td><td>${item.reorder_level}</td>`;
+        invBody.appendChild(row);
+      });
+      updateSummary();
+    }
+
+    function addMovementRow(move) {
+      const row = document.createElement("tr");
+      row.classList.add("new-row");
+      row.innerHTML = `
+        <td>${move.item_name} (${move.sku})</td>
+        <td class="direction-${move.direction}">${move.direction}</td>
+        <td>${move.quantity}</td><td>${move.quantity_on_hand}</td><td>${move.reason || ""}</td>`;
+      movementBody.prepend(row);
+    }
+
+    async function loadEmployees() {
+      const opts = { headers: { "Authorization": authHeader } };
+      const employees = await fetch("/employees", opts).then(r => r.json());
+      const body = document.getElementById("emp-body");
+      body.innerHTML = "";
+      employees.forEach(emp => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${emp.username}</td><td>${emp.full_name || ""}</td>
+          <td>${emp.active ? "active" : "deactivated"}</td>
+          <td>${emp.active ? `<button onclick="removeEmployee(${emp.id})" style="cursor:pointer;">Deactivate</button>` : ""}</td>`;
+        body.appendChild(row);
+      });
+    }
+
+    async function addEmployee() {
+      const errorEl = document.getElementById("emp-error");
+      errorEl.textContent = "";
+      const username = document.getElementById("new-emp-username").value.trim();
+      const password = document.getElementById("new-emp-password").value;
+      const full_name = document.getElementById("new-emp-name").value.trim();
+
+      if (!username || !password) {
+        errorEl.textContent = "Username and password are required.";
+        return;
+      }
+
+      const res = await fetch("/employees", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": authHeader },
+        body: JSON.stringify({ username, password, full_name: full_name || null })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        errorEl.textContent = data.detail || "Failed to add employee.";
+        return;
+      }
+
+      document.getElementById("new-emp-username").value = "";
+      document.getElementById("new-emp-password").value = "";
+      document.getElementById("new-emp-name").value = "";
+      loadEmployees();
+    }
+
+    async function removeEmployee(id) {
+      await fetch(`/employees/${id}`, { method: "DELETE", headers: { "Authorization": authHeader } });
+      loadEmployees();
+    }
+
+    async function loadInitial() {
+      const opts = { headers: { "Authorization": authHeader } };
+
+      const summary = await fetch("/summary/today", opts).then(r => r.json());
+      todayIncome = summary.income;
+      todayExpense = summary.expense;
+
+      const transactions = await fetch("/transactions", opts).then(r => r.json());
+      transactions.forEach(tx => addTxRow(tx, false));
+
+      const items = await fetch("/inventory/items", opts).then(r => r.json());
+      items.forEach(item => { inventoryItems[item.id] = item; });
+      renderInventoryTable();
+    }
+
+    function connectWebSocket() {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const ws = new WebSocket(`${protocol}//${window.location.host}/ws?user=${encodeURIComponent(dashUser)}&pw=${encodeURIComponent(dashPass)}`);
+
+      ws.onopen = () => {
+        statusEl.textContent = "● Live";
+        statusEl.classList.add("connected");
+      };
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+
+        if (msg.kind === "transaction") {
+          addTxRow(msg, true);
+          if (msg.type === "income") todayIncome += msg.amount;
+          else todayExpense += msg.amount;
+          updateSummary();
+        } else if (msg.kind === "stock_movement") {
+          addMovementRow(msg);
+          if (inventoryItems[msg.inventory_item_id]) {
+            inventoryItems[msg.inventory_item_id].quantity_on_hand = msg.quantity_on_hand;
+          }
+          renderInventoryTable();
+        }
+      };
+
+      ws.onclose = () => {
+        statusEl.textContent = "Disconnected — retrying...";
+        statusEl.classList.remove("connected");
+        setTimeout(connectWebSocket, 3000);
+      };
+    }
+
+    loadInitial();
+    loadEmployees();
+    connectWebSocket();
+  </script>
+</body>
+</html>

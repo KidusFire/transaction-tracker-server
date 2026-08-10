@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Sign Up — Company Tracker</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f5f7; display: flex; justify-content: center; padding: 40px 20px; }
+    .card { background: white; border-radius: 10px; padding: 32px; max-width: 420px; width: 100%; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+    h1 { font-size: 20px; margin-top: 0; }
+    label { display: block; font-size: 13px; color: #555; margin-top: 14px; margin-bottom: 4px; }
+    input, select { width: 100%; padding: 8px 10px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+    button { width: 100%; margin-top: 20px; padding: 10px; background: #2c3e50; color: white; border: none; border-radius: 6px; font-size: 15px; cursor: pointer; }
+    button:hover { background: #34495e; }
+    .plan-option { border: 1px solid #ddd; border-radius: 6px; padding: 10px; margin-top: 8px; cursor: pointer; font-size: 13px; }
+    .plan-option.selected { border-color: #2c3e50; background: #f0f4f8; }
+    #result { display: none; margin-top: 20px; padding: 16px; background: #eafaf1; border-radius: 6px; font-size: 13px; }
+    #result code { display: block; background: white; padding: 8px; border-radius: 4px; margin-top: 6px; word-break: break-all; }
+    .error { color: #c0392b; font-size: 13px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Create your company account</h1>
+    <form id="signup-form">
+      <label>Company name</label>
+      <input type="text" id="company_name" required>
+
+      <label>Dashboard login username</label>
+      <input type="text" id="dashboard_username" required>
+
+      <label>Dashboard login password</label>
+      <input type="password" id="dashboard_password" required>
+
+      <label>Plan</label>
+      <select id="plan">
+        <option value="free">Free — up to 3 employees</option>
+        <option value="starter">Starter — up to 10 employees</option>
+        <option value="growth">Growth — up to 25 employees</option>
+        <option value="enterprise">Enterprise — unlimited employees</option>
+      </select>
+
+      <button type="submit">Create Account</button>
+      <div id="error" class="error"></div>
+    </form>
+
+    <div id="result">
+      <strong>Account created!</strong>
+      <div>Save your API key now — you'll need it to set up each employee's app, and it won't be shown again:</div>
+      <code id="api-key-display"></code>
+      <div style="margin-top:10px;">Your dashboard: <a id="dashboard-link" href="#">Open Dashboard</a></div>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById("signup-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById("error");
+      errorEl.textContent = "";
+
+      const payload = {
+        company_name: document.getElementById("company_name").value,
+        dashboard_username: document.getElementById("dashboard_username").value,
+        dashboard_password: document.getElementById("dashboard_password").value,
+        plan: document.getElementById("plan").value,
+      };
+
+      try {
+        const res = await fetch("/companies/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          errorEl.textContent = data.detail || "Signup failed.";
+          return;
+        }
+
+        document.getElementById("signup-form").style.display = "none";
+        document.getElementById("result").style.display = "block";
+        document.getElementById("api-key-display").textContent = data.api_key;
+        document.getElementById("dashboard-link").href = "/dashboard";
+      } catch (err) {
+        errorEl.textContent = "Could not reach the server. Try again.";
+      }
+    });
+  </script>
+</body>
+</html>
