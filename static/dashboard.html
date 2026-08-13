@@ -169,7 +169,9 @@
         alert("Failed to update transaction.");
         return;
       }
-      reloadTransactions();
+      // Note: no need to reload here — the server broadcasts a "transactions_changed"
+      // event back to this same tab over the WebSocket, which triggers the reload.
+      // Calling reloadTransactions() here too would race with that and duplicate rows.
     }
 
     async function deleteTransaction(id) {
@@ -184,7 +186,7 @@
         alert("Failed to delete transaction.");
         return;
       }
-      reloadTransactions();
+      // Same as above — the WebSocket broadcast handles the reload.
     }
 
     async function reloadTransactions() {
