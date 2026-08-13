@@ -96,7 +96,7 @@
 
   <h2>Recent Stock Movements</h2>
   <table>
-    <thead><tr><th>Item</th><th>Direction</th><th>Qty</th><th>New Qty on Hand</th><th>Reason</th></tr></thead>
+    <thead><tr><th>Time</th><th>Item</th><th>Employee</th><th>Direction</th><th>Qty</th><th>New Qty on Hand</th><th>Reason</th></tr></thead>
     <tbody id="movement-body"></tbody>
   </table>
 
@@ -256,14 +256,17 @@
       renderInventoryTable();
     }
 
-    function addMovementRow(move) {
+    function addMovementRow(move, prepend = true) {
       const row = document.createElement("tr");
       row.classList.add("new-row");
+      const dateTime = move.created_at ? new Date(move.created_at).toLocaleString() : "";
       row.innerHTML = `
+        <td>${dateTime}</td>
         <td>${move.item_name} (${move.sku})</td>
+        <td>${move.employee_id || ""}</td>
         <td class="direction-${move.direction}">${move.direction}</td>
-        <td>${move.quantity}</td><td>${move.quantity_on_hand}</td><td>${move.reason || ""}</td>`;
-      movementBody.prepend(row);
+        <td>${move.quantity}</td><td>${move.quantity_on_hand ?? ""}</td><td>${move.reason || ""}</td>`;
+      if (prepend) movementBody.prepend(row); else movementBody.appendChild(row);
     }
 
     async function runReport() {
@@ -392,6 +395,9 @@
       const items = await fetch("/inventory/items", opts).then(r => r.json());
       items.forEach(item => { inventoryItems[item.id] = item; });
       renderInventoryTable();
+
+      const movements = await fetch("/inventory/movements", opts).then(r => r.json());
+      movements.forEach(m => addMovementRow(m, false));
     }
 
     function connectWebSocket() {

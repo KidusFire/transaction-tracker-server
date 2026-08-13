@@ -420,6 +420,31 @@ async def create_movement(
     return db_movement
 
 
+@app.get("/inventory/movements")
+def list_movements(
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    movements = db.query(models.StockMovement).filter(
+        models.StockMovement.company_id == company.id
+    ).order_by(models.StockMovement.created_at.desc()).limit(200).all()
+
+    result = []
+    for m in movements:
+        item = db.query(models.InventoryItem).filter(models.InventoryItem.id == m.inventory_item_id).first()
+        result.append({
+            "id": m.id,
+            "item_name": item.name if item else "(deleted item)",
+            "sku": item.sku if item else "",
+            "employee_id": m.employee_id,
+            "direction": m.direction,
+            "quantity": m.quantity,
+            "reason": m.reason,
+            "created_at": m.created_at,
+        })
+    return result
+
+
 @app.get("/inventory/low-stock", response_model=List[schemas.InventoryItemOut])
 def low_stock(
     db: Session = Depends(get_db),
