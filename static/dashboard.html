@@ -40,6 +40,27 @@
     <div class="card lowstock"><div class="label">Low Stock Items</div><div class="value" id="lowstock-total">0</div></div>
   </div>
 
+  <h2>Reports</h2>
+  <div style="background:white; border-radius:8px; padding:16px; margin-bottom:20px;">
+    <div style="display:flex; gap:8px; align-items:end; flex-wrap:wrap;">
+      <div>
+        <label style="display:block; font-size:12px; color:#888;">From</label>
+        <input type="date" id="report-start" style="padding:8px; border:1px solid #ddd; border-radius:6px;">
+      </div>
+      <div>
+        <label style="display:block; font-size:12px; color:#888;">To</label>
+        <input type="date" id="report-end" style="padding:8px; border:1px solid #ddd; border-radius:6px;">
+      </div>
+      <button onclick="runReport()" style="padding:8px 16px; background:#2c3e50; color:white; border:none; border-radius:6px; cursor:pointer;">Get Report</button>
+    </div>
+    <div id="report-error" style="color:#c0392b; font-size:13px; margin-top:10px;"></div>
+    <div id="report-summary" style="display:none; margin-top:16px; display:flex; gap:16px; flex-wrap:wrap;"></div>
+    <table id="report-table" style="display:none; margin-top:16px;">
+      <thead><tr><th>Date</th><th>Income</th><th>Expense</th><th>Net</th></tr></thead>
+      <tbody id="report-body"></tbody>
+    </table>
+  </div>
+
   <h2>Employees</h2>
   <div style="background:white; border-radius:8px; padding:16px; margin-bottom:20px;">
     <div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;">
@@ -63,7 +84,7 @@
 
   <h2>Inventory</h2>
   <table>
-    <thead><tr><th>SKU</th><th>Name</th><th>Qty on Hand</th><th>Unit</th><th>Reorder Level</th></tr></thead>
+    <thead><tr><th>SKU</th><th>Name</th><th>Qty on Hand</th><th>Unit</th><th>Reorder Level</th><th></th></tr></thead>
     <tbody id="inv-body"></tbody>
   </table>
 
@@ -97,9 +118,9 @@
     function addTxRow(tx, highlight) {
       const row = document.createElement("tr");
       if (highlight) row.classList.add("new-row");
-      const time = new Date(tx.created_at).toLocaleTimeString();
+      const dateTime = new Date(tx.created_at).toLocaleString();
       row.innerHTML = `
-        <td>${time}</td><td>${tx.employee_id}</td>
+        <td>${dateTime}</td><td>${tx.employee_id}</td>
         <td class="type-${tx.type}">${tx.type}</td>
         <td>${tx.amount.toLocaleString()}</td><td>${tx.category}</td><td>${tx.note || ""}</td>`;
       txBody.prepend(row);
@@ -114,10 +135,48 @@
         row.innerHTML = `
           <td>${item.sku}</td><td>${item.name}</td>
           <td>${item.quantity_on_hand}${isLow ? " ⚠" : ""}</td>
-          <td>${item.unit}</td><td>${item.reorder_level}</td>`;
+          <td>${item.unit}</td><td>${item.reorder_level}</td>
+          <td><button onclick="editItem(${item.id})" style="cursor:pointer;">Edit</button></td>`;
         invBody.appendChild(row);
       });
       updateSummary();
+    }
+
+    async function editItem(id) {
+      const item = inventoryItems[id];
+      if (!item) return;
+
+      const newName = prompt("Item name:", item.name);
+      if (newName === null) return;   // cancelled
+
+      const newUnit = prompt("Unit (e.g. kg, pcs, liters):", item.unit);
+      if (newUnit === null) return;
+
+      const newReorder = prompt("Reorder level (alert when stock falls to/below this):", item.reorder_level);
+      if (newReorder === null) return;
+
+      const newCost = prompt("Unit cost:", item.unit_cost);
+      if (newCost === null) return;
+
+      const opts = {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": authHeader },
+        body: JSON.stringify({
+          name: newName,
+          unit: newUnit,
+          reorder_level: parseFloat(newReorder) || 0,
+          unit_cost: parseFloat(newCost) || 0,
+        })
+      };
+
+      const res = await fetch(`/inventory/items/${id}`, opts);
+      if (!res.ok) {
+        alert("Failed to update item.");
+        return;
+      }
+      const updated = await res.json();
+      inventoryItems[id] = updated;
+      renderInventoryTable();
     }
 
     function addMovementRow(move) {
@@ -128,6 +187,51 @@
         <td class="direction-${move.direction}">${move.direction}</td>
         <td>${move.quantity}</td><td>${move.quantity_on_hand}</td><td>${move.reason || ""}</td>`;
       movementBody.prepend(row);
+    }
+
+    async function runReport() {
+      const errorEl = document.getElementById("report-error");
+      errorEl.textContent = "";
+      const start = document.getElementById("report-start").value;
+      const end = document.getElementById("report-end").value;
+
+      if (!start || !end) {
+        errorEl.textContent = "Pick both a start and end date.";
+        return;
+      }
+
+      const opts = { headers: { "Authorization": authHeader } };
+      const res = await fetch(`/summary/range?start_date=${start}&end_date=${end}`, opts);
+      const data = await res.json();
+
+      if (!res.ok) {
+        errorEl.textContent = data.detail || "Failed to load report.";
+        return;
+      }
+
+      const summaryEl = document.getElementById("report-summary");
+      summaryEl.style.display = "flex";
+      summaryEl.innerHTML = `
+        <div class="card income"><div class="label">Income</div><div class="value">${data.income.toLocaleString()}</div></div>
+        <div class="card expense"><div class="label">Expense</div><div class="value">${data.expense.toLocaleString()}</div></div>
+        <div class="card net"><div class="label">Net</div><div class="value">${data.net.toLocaleString()}</div></div>
+      `;
+
+      const tableEl = document.getElementById("report-table");
+      const bodyEl = document.getElementById("report-body");
+      bodyEl.innerHTML = "";
+      if (data.daily.length === 0) {
+        tableEl.style.display = "none";
+      } else {
+        tableEl.style.display = "table";
+        data.daily.forEach(day => {
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${day.date}</td><td>${day.income.toLocaleString()}</td>
+            <td>${day.expense.toLocaleString()}</td><td>${day.net.toLocaleString()}</td>`;
+          bodyEl.appendChild(row);
+        });
+      }
     }
 
     async function loadEmployees() {
@@ -217,6 +321,9 @@
           if (inventoryItems[msg.inventory_item_id]) {
             inventoryItems[msg.inventory_item_id].quantity_on_hand = msg.quantity_on_hand;
           }
+          renderInventoryTable();
+        } else if (msg.kind === "item_updated") {
+          inventoryItems[msg.id] = msg;
           renderInventoryTable();
         }
       };

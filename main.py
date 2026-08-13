@@ -172,6 +172,55 @@ def list_transactions(
         .order_by(models.Transaction.created_at.desc()).all()
 
 
+@app.get("/summary/range")
+def summary_range(
+    start_date: str,
+    end_date: str,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    """start_date and end_date as YYYY-MM-DD. Returns totals plus a day-by-day breakdown."""
+    from datetime import datetime, timedelta
+
+    try:
+        start = datetime.fromisoformat(start_date)
+        end = datetime.fromisoformat(end_date) + timedelta(days=1)  # include the whole end day
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Dates must be in YYYY-MM-DD format")
+
+    transactions = db.query(models.Transaction).filter(
+        models.Transaction.company_id == company.id,
+        models.Transaction.created_at >= start,
+        models.Transaction.created_at < end
+    ).order_by(models.Transaction.created_at).all()
+
+    daily = {}
+    total_income = 0
+    total_expense = 0
+
+    for tx in transactions:
+        day = tx.created_at.date().isoformat()
+        if day not in daily:
+            daily[day] = {"income": 0, "expense": 0}
+        daily[day][tx.type] += tx.amount
+        if tx.type == "income":
+            total_income += tx.amount
+        else:
+            total_expense += tx.amount
+
+    daily_breakdown = [
+        {"date": day, "income": vals["income"], "expense": vals["expense"], "net": vals["income"] - vals["expense"]}
+        for day, vals in sorted(daily.items())
+    ]
+
+    return {
+        "income": total_income,
+        "expense": total_expense,
+        "net": total_income - total_expense,
+        "daily": daily_breakdown,
+    }
+
+
 @app.get("/summary/today")
 def summary_today(
     db: Session = Depends(get_db),
@@ -205,6 +254,37 @@ def create_item(
     db.commit()
     db.refresh(db_item)
     return db_item
+
+
+@app.put("/inventory/items/{item_id}", response_model=schemas.InventoryItemOut)
+async def update_item(
+    item_id: int,
+    payload: schemas.InventoryItemUpdate,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    item = db.query(models.InventoryItem).filter(
+        models.InventoryItem.id == item_id, models.InventoryItem.company_id == company.id
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+
+    update_data = payload.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(item, field, value)
+
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+
+    await manager.broadcast_to_company(company.id, {
+        "kind": "item_updated",
+        "id": item.id, "sku": item.sku, "name": item.name, "unit": item.unit,
+        "quantity_on_hand": item.quantity_on_hand, "reorder_level": item.reorder_level,
+        "unit_cost": item.unit_cost,
+    })
+
+    return item
 
 
 @app.get("/inventory/items/lookup", response_model=List[schemas.InventoryItemOut])

@@ -81,6 +81,13 @@ class InventoryItemOut(BaseModel):
         from_attributes = True
 
 
+class InventoryItemUpdate(BaseModel):
+    name: Optional[str] = None
+    unit: Optional[str] = None
+    reorder_level: Optional[float] = None
+    unit_cost: Optional[float] = None
+
+
 class StockMovementCreate(BaseModel):
     inventory_item_id: int
     employee_username: str
