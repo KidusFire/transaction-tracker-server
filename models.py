@@ -82,3 +82,4 @@ class StockMovement(Base):
     reason = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     linked_transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=True)
+    resulting_quantity_on_hand = Column(Float, nullable=True)  # snapshot of stock level right after this movement

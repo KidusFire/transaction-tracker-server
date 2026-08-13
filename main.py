@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, HTTPExcept
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, text
 from typing import List, Optional
 from datetime import datetime
 import json
@@ -13,6 +13,16 @@ import schemas
 import auth
 
 models.Base.metadata.create_all(bind=engine)
+
+# Lightweight migration: add any new columns that existing deployments' databases
+# don't have yet (create_all only creates missing TABLES, not missing COLUMNS on
+# tables that already exist). Safe to run every startup — does nothing if already applied.
+with engine.connect() as conn:
+    try:
+        conn.execute(text("ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS resulting_quantity_on_hand FLOAT"))
+        conn.commit()
+    except Exception:
+        pass  # e.g. SQLite locally doesn't support IF NOT EXISTS here — harmless to skip
 
 app = FastAPI(title="Company Transaction & Inventory Tracker")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -404,7 +414,7 @@ async def create_movement(
     db_movement = models.StockMovement(
         company_id=company.id, inventory_item_id=item.id, employee_id=employee.username,
         direction=movement.direction, quantity=movement.quantity, reason=movement.reason,
-        linked_transaction_id=linked_tx_id,
+        linked_transaction_id=linked_tx_id, resulting_quantity_on_hand=item.quantity_on_hand,
     )
     db.add(db_movement)
     db.commit()
@@ -439,6 +449,7 @@ def list_movements(
             "employee_id": m.employee_id,
             "direction": m.direction,
             "quantity": m.quantity,
+            "quantity_on_hand": m.resulting_quantity_on_hand,
             "reason": m.reason,
             "created_at": m.created_at,
         })
