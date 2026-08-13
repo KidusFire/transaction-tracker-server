@@ -213,11 +213,21 @@ def summary_range(
         for day, vals in sorted(daily.items())
     ]
 
+    transaction_list = [
+        {
+            "id": tx.id, "employee_id": tx.employee_id, "type": tx.type,
+            "amount": tx.amount, "category": tx.category, "note": tx.note,
+            "created_at": tx.created_at,
+        }
+        for tx in transactions
+    ]
+
     return {
         "income": total_income,
         "expense": total_expense,
         "net": total_income - total_expense,
         "daily": daily_breakdown,
+        "transactions": transaction_list,
     }
 
 
