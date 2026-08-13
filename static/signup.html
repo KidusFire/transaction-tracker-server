@@ -39,6 +39,14 @@
         <option value="enterprise">Enterprise — unlimited employees</option>
       </select>
 
+      <label>Currency</label>
+      <select id="currency">
+        <option value="USD">USD — US Dollar</option>
+        <option value="ETB">ETB — Ethiopian Birr</option>
+        <option value="GNF">GNF — Guinean Franc</option>
+        <option value="EUR">EUR — Euro</option>
+      </select>
+
       <button type="submit">Create Account</button>
       <div id="error" class="error"></div>
     </form>
@@ -62,6 +70,7 @@
         dashboard_username: document.getElementById("dashboard_username").value,
         dashboard_password: document.getElementById("dashboard_password").value,
         plan: document.getElementById("plan").value,
+        currency: document.getElementById("currency").value,
       };
 
       try {

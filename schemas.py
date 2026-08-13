@@ -40,6 +40,7 @@ class CompanySignup(BaseModel):
     dashboard_username: str
     dashboard_password: str
     plan: str = "free"
+    currency: str = "USD"
 
 
 class CompanySignupOut(BaseModel):
@@ -48,6 +49,17 @@ class CompanySignupOut(BaseModel):
     api_key: str
     dashboard_username: str
     plan: str
+    currency: str
+
+
+class CompanyOut(BaseModel):
+    id: int
+    name: str
+    plan: str
+    currency: str
+
+    class Config:
+        from_attributes = True
 
 
 class EmployeeCreate(BaseModel):

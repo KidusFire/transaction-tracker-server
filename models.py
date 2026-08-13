@@ -15,6 +15,7 @@ class Company(Base):
     dashboard_username = Column(String, unique=True, index=True)
     dashboard_password_hash = Column(String)
     plan = Column(String, default="free")          # "free", "starter", "growth", "enterprise"
+    currency = Column(String, default="USD")        # "USD", "ETB", "GNF", "EUR", etc.
     is_active = Column(Boolean, default=True)       # for suspending a delinquent/cancelled account later
     created_at = Column(DateTime, default=datetime.utcnow)
 

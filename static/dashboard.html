@@ -17,6 +17,7 @@
     .expense .value { color: #c0392b; }
     .net .value { color: #2c3e50; }
     .lowstock .value { color: #d68910; }
+    .value2 .value { color: #6c3483; }
     table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; margin-bottom: 20px; }
     th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid #eee; font-size: 14px; }
     th { background: #fafafa; color: #666; }
@@ -26,6 +27,7 @@
     .direction-out { color: #c0392b; font-weight: bold; }
     .new-row { animation: flash 1.5s ease-out; }
     .low-stock-row { background: #fff8e1; }
+    .search-box { padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; width: 260px; max-width: 100%; margin-bottom: 10px; font-size: 14px; }
     @keyframes flash { from { background: #fff3cd; } to { background: white; } }
   </style>
 </head>
@@ -38,6 +40,7 @@
     <div class="card expense"><div class="label">Today's Expenses</div><div class="value" id="expense-total">0</div></div>
     <div class="card net"><div class="label">Net</div><div class="value" id="net-total">0</div></div>
     <div class="card lowstock"><div class="label">Low Stock Items</div><div class="value" id="lowstock-total">0</div></div>
+    <div class="card value2"><div class="label">Inventory Value</div><div class="value" id="inventory-value">0</div></div>
   </div>
 
   <h2>Reports</h2>
@@ -83,18 +86,21 @@
   </div>
 
   <h2>Transactions</h2>
+  <input type="text" id="tx-search" class="search-box" placeholder="Search by employee, category, or note...">
   <table>
     <thead><tr><th>Time</th><th>Employee</th><th>Type</th><th>Amount</th><th>Category</th><th>Note</th><th></th></tr></thead>
     <tbody id="tx-body"></tbody>
   </table>
 
   <h2>Inventory</h2>
+  <input type="text" id="inv-search" class="search-box" placeholder="Search by SKU or name...">
   <table>
-    <thead><tr><th>SKU</th><th>Name</th><th>Qty on Hand</th><th>Unit</th><th>Reorder Level</th><th></th></tr></thead>
+    <thead><tr><th>SKU</th><th>Name</th><th>Qty on Hand</th><th>Unit</th><th>Reorder Level</th><th>Unit Cost</th><th>Value</th><th></th></tr></thead>
     <tbody id="inv-body"></tbody>
   </table>
 
   <h2>Recent Stock Movements</h2>
+  <input type="text" id="move-search" class="search-box" placeholder="Search by item or employee...">
   <table>
     <thead><tr><th>Time</th><th>Item</th><th>Employee</th><th>Direction</th><th>Qty</th><th>New Qty on Hand</th><th>Reason</th></tr></thead>
     <tbody id="movement-body"></tbody>
@@ -107,38 +113,60 @@
     const statusEl = document.getElementById("status");
 
     let todayIncome = 0, todayExpense = 0;
-    let inventoryItems = {};   // id -> item data, kept in sync live
+    let inventoryItems = {};    // id -> item data, kept in sync live
+    let allTransactions = {};   // id -> transaction data
+    let allMovements = {};      // id -> movement data
+    let currency = "USD";       // fetched from /company/me on load
 
     const dashUser = prompt("Dashboard username:");
     const dashPass = prompt("Dashboard password:");
     const authHeader = "Basic " + btoa(`${dashUser}:${dashPass}`);
 
-    function updateSummary() {
-      document.getElementById("income-total").textContent = todayIncome.toLocaleString();
-      document.getElementById("expense-total").textContent = todayExpense.toLocaleString();
-      document.getElementById("net-total").textContent = (todayIncome - todayExpense).toLocaleString();
-      const lowCount = Object.values(inventoryItems).filter(i => i.quantity_on_hand <= i.reorder_level).length;
-      document.getElementById("lowstock-total").textContent = lowCount;
+    function fmt(amount) {
+      const n = (amount || 0).toLocaleString();
+      return `${currency} ${n}`;
     }
 
-    let allTransactions = {};   // id -> transaction data, kept in sync for editing
+    function updateSummary() {
+      document.getElementById("income-total").textContent = fmt(todayIncome);
+      document.getElementById("expense-total").textContent = fmt(todayExpense);
+      document.getElementById("net-total").textContent = fmt(todayIncome - todayExpense);
+      const lowCount = Object.values(inventoryItems).filter(i => i.quantity_on_hand <= i.reorder_level).length;
+      document.getElementById("lowstock-total").textContent = lowCount;
+      const totalValue = Object.values(inventoryItems).reduce((sum, i) => sum + (i.quantity_on_hand * (i.unit_cost || 0)), 0);
+      document.getElementById("inventory-value").textContent = fmt(totalValue);
+    }
 
     function addTxRow(tx, highlight) {
       allTransactions[tx.id] = tx;
-      const row = document.createElement("tr");
-      row.id = `tx-row-${tx.id}`;
-      if (highlight) row.classList.add("new-row");
-      const dateTime = new Date(tx.created_at).toLocaleString();
-      row.innerHTML = `
-        <td>${dateTime}</td><td>${tx.employee_id}</td>
-        <td class="type-${tx.type}">${tx.type}</td>
-        <td>${tx.amount.toLocaleString()}</td><td>${tx.category}</td><td>${tx.note || ""}</td>
-        <td>
-          <button onclick="editTransaction(${tx.id})" style="cursor:pointer;">Edit</button>
-          <button onclick="deleteTransaction(${tx.id})" style="cursor:pointer;">Delete</button>
-        </td>`;
-      txBody.prepend(row);
+      renderTransactionsTable();
     }
+
+    function renderTransactionsTable() {
+      const filter = (document.getElementById("tx-search").value || "").toLowerCase();
+      txBody.innerHTML = "";
+      Object.values(allTransactions)
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        .forEach(tx => {
+          const haystack = `${tx.employee_id} ${tx.category} ${tx.note || ""}`.toLowerCase();
+          if (filter && !haystack.includes(filter)) return;
+
+          const row = document.createElement("tr");
+          row.id = `tx-row-${tx.id}`;
+          const dateTime = new Date(tx.created_at).toLocaleString();
+          row.innerHTML = `
+            <td>${dateTime}</td><td>${tx.employee_id}</td>
+            <td class="type-${tx.type}">${tx.type}</td>
+            <td>${fmt(tx.amount)}</td><td>${tx.category}</td><td>${tx.note || ""}</td>
+            <td>
+              <button onclick="editTransaction(${tx.id})" style="cursor:pointer;">Edit</button>
+              <button onclick="deleteTransaction(${tx.id})" style="cursor:pointer;">Delete</button>
+            </td>`;
+          txBody.appendChild(row);
+        });
+    }
+
+    document.getElementById("tx-search").addEventListener("input", renderTransactionsTable);
 
     async function editTransaction(id) {
       const tx = allTransactions[id];
@@ -169,9 +197,8 @@
         alert("Failed to update transaction.");
         return;
       }
-      // Note: no need to reload here — the server broadcasts a "transactions_changed"
-      // event back to this same tab over the WebSocket, which triggers the reload.
-      // Calling reloadTransactions() here too would race with that and duplicate rows.
+      // The server broadcasts "transactions_changed" back over the WebSocket,
+      // which triggers reloadTransactions() — no need to call it here too.
     }
 
     async function deleteTransaction(id) {
@@ -186,12 +213,10 @@
         alert("Failed to delete transaction.");
         return;
       }
-      // Same as above — the WebSocket broadcast handles the reload.
     }
 
     async function reloadTransactions() {
       const opts = { headers: { "Authorization": authHeader } };
-      txBody.innerHTML = "";
       allTransactions = {};
 
       const summary = await fetch("/summary/today", opts).then(r => r.json());
@@ -200,31 +225,40 @@
       updateSummary();
 
       const transactions = await fetch("/transactions", opts).then(r => r.json());
-      transactions.forEach(tx => addTxRow(tx, false));
+      transactions.forEach(tx => { allTransactions[tx.id] = tx; });
+      renderTransactionsTable();
     }
 
     function renderInventoryTable() {
+      const filter = (document.getElementById("inv-search").value || "").toLowerCase();
       invBody.innerHTML = "";
       Object.values(inventoryItems).forEach(item => {
+        const haystack = `${item.sku} ${item.name}`.toLowerCase();
+        if (filter && !haystack.includes(filter)) return;
+
         const row = document.createElement("tr");
         const isLow = item.quantity_on_hand <= item.reorder_level;
         if (isLow) row.classList.add("low-stock-row");
+        const value = item.quantity_on_hand * (item.unit_cost || 0);
         row.innerHTML = `
           <td>${item.sku}</td><td>${item.name}</td>
           <td>${item.quantity_on_hand}${isLow ? " ⚠" : ""}</td>
           <td>${item.unit}</td><td>${item.reorder_level}</td>
+          <td>${fmt(item.unit_cost || 0)}</td><td>${fmt(value)}</td>
           <td><button onclick="editItem(${item.id})" style="cursor:pointer;">Edit</button></td>`;
         invBody.appendChild(row);
       });
       updateSummary();
     }
 
+    document.getElementById("inv-search").addEventListener("input", renderInventoryTable);
+
     async function editItem(id) {
       const item = inventoryItems[id];
       if (!item) return;
 
       const newName = prompt("Item name:", item.name);
-      if (newName === null) return;   // cancelled
+      if (newName === null) return;
 
       const newUnit = prompt("Unit (e.g. kg, pcs, liters):", item.unit);
       if (newUnit === null) return;
@@ -235,18 +269,16 @@
       const newCost = prompt("Unit cost:", item.unit_cost);
       if (newCost === null) return;
 
-      const opts = {
+      const res = await fetch(`/inventory/items/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", "Authorization": authHeader },
         body: JSON.stringify({
-          name: newName,
-          unit: newUnit,
+          name: newName, unit: newUnit,
           reorder_level: parseFloat(newReorder) || 0,
           unit_cost: parseFloat(newCost) || 0,
         })
-      };
+      });
 
-      const res = await fetch(`/inventory/items/${id}`, opts);
       if (!res.ok) {
         alert("Failed to update item.");
         return;
@@ -257,17 +289,32 @@
     }
 
     function addMovementRow(move, prepend = true) {
-      const row = document.createElement("tr");
-      row.classList.add("new-row");
-      const dateTime = move.created_at ? new Date(move.created_at).toLocaleString() : "";
-      row.innerHTML = `
-        <td>${dateTime}</td>
-        <td>${move.item_name} (${move.sku})</td>
-        <td>${move.employee_id || ""}</td>
-        <td class="direction-${move.direction}">${move.direction}</td>
-        <td>${move.quantity}</td><td>${move.quantity_on_hand ?? ""}</td><td>${move.reason || ""}</td>`;
-      if (prepend) movementBody.prepend(row); else movementBody.appendChild(row);
+      allMovements[move.id || `${move.inventory_item_id}-${Date.now()}`] = move;
+      renderMovementsTable();
     }
+
+    function renderMovementsTable() {
+      const filter = (document.getElementById("move-search").value || "").toLowerCase();
+      movementBody.innerHTML = "";
+      Object.values(allMovements)
+        .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+        .forEach(move => {
+          const haystack = `${move.item_name} ${move.sku} ${move.employee_id || ""}`.toLowerCase();
+          if (filter && !haystack.includes(filter)) return;
+
+          const row = document.createElement("tr");
+          const dateTime = move.created_at ? new Date(move.created_at).toLocaleString() : "";
+          row.innerHTML = `
+            <td>${dateTime}</td>
+            <td>${move.item_name} (${move.sku})</td>
+            <td>${move.employee_id || ""}</td>
+            <td class="direction-${move.direction}">${move.direction}</td>
+            <td>${move.quantity}</td><td>${move.quantity_on_hand ?? ""}</td><td>${move.reason || ""}</td>`;
+          movementBody.appendChild(row);
+        });
+    }
+
+    document.getElementById("move-search").addEventListener("input", renderMovementsTable);
 
     async function runReport() {
       const errorEl = document.getElementById("report-error");
@@ -292,9 +339,9 @@
       const summaryEl = document.getElementById("report-summary");
       summaryEl.style.display = "flex";
       summaryEl.innerHTML = `
-        <div class="card income"><div class="label">Income</div><div class="value">${data.income.toLocaleString()}</div></div>
-        <div class="card expense"><div class="label">Expense</div><div class="value">${data.expense.toLocaleString()}</div></div>
-        <div class="card net"><div class="label">Net</div><div class="value">${data.net.toLocaleString()}</div></div>
+        <div class="card income"><div class="label">Income</div><div class="value">${fmt(data.income)}</div></div>
+        <div class="card expense"><div class="label">Expense</div><div class="value">${fmt(data.expense)}</div></div>
+        <div class="card net"><div class="label">Net</div><div class="value">${fmt(data.net)}</div></div>
       `;
 
       const tableEl = document.getElementById("report-table");
@@ -307,8 +354,8 @@
         data.daily.forEach(day => {
           const row = document.createElement("tr");
           row.innerHTML = `
-            <td>${day.date}</td><td>${day.income.toLocaleString()}</td>
-            <td>${day.expense.toLocaleString()}</td><td>${day.net.toLocaleString()}</td>`;
+            <td>${day.date}</td><td>${fmt(day.income)}</td>
+            <td>${fmt(day.expense)}</td><td>${fmt(day.net)}</td>`;
           bodyEl.appendChild(row);
         });
       }
@@ -326,7 +373,7 @@
           row.innerHTML = `
             <td>${dateTime}</td><td>${tx.employee_id}</td>
             <td class="type-${tx.type}">${tx.type}</td>
-            <td>${tx.amount.toLocaleString()}</td><td>${tx.category}</td><td>${tx.note || ""}</td>`;
+            <td>${fmt(tx.amount)}</td><td>${tx.category}</td><td>${tx.note || ""}</td>`;
           detailBodyEl.appendChild(row);
         });
       }
@@ -385,19 +432,25 @@
     async function loadInitial() {
       const opts = { headers: { "Authorization": authHeader } };
 
+      const company = await fetch("/company/me", opts).then(r => r.json());
+      currency = company.currency || "USD";
+      document.querySelector("h1").textContent = `Live Dashboard — ${company.name}`;
+
       const summary = await fetch("/summary/today", opts).then(r => r.json());
       todayIncome = summary.income;
       todayExpense = summary.expense;
 
       const transactions = await fetch("/transactions", opts).then(r => r.json());
-      transactions.forEach(tx => addTxRow(tx, false));
+      transactions.forEach(tx => { allTransactions[tx.id] = tx; });
+      renderTransactionsTable();
 
       const items = await fetch("/inventory/items", opts).then(r => r.json());
       items.forEach(item => { inventoryItems[item.id] = item; });
       renderInventoryTable();
 
       const movements = await fetch("/inventory/movements", opts).then(r => r.json());
-      movements.forEach(m => addMovementRow(m, false));
+      movements.forEach(m => { allMovements[m.id] = m; });
+      renderMovementsTable();
     }
 
     function connectWebSocket() {

@@ -24,8 +24,20 @@ with engine.connect() as conn:
     except Exception:
         pass  # e.g. SQLite locally doesn't support IF NOT EXISTS here — harmless to skip
 
+with engine.connect() as conn:
+    try:
+        conn.execute(text("ALTER TABLE companies ADD COLUMN IF NOT EXISTS currency VARCHAR DEFAULT 'USD'"))
+        conn.commit()
+    except Exception:
+        pass
+
 app = FastAPI(title="Company Transaction & Inventory Tracker")
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.get("/company/me", response_model=schemas.CompanyOut)
+def get_my_company(company: models.Company = Depends(auth.get_company_from_dashboard_login)):
+    return company
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
@@ -59,6 +71,7 @@ def signup(payload: schemas.CompanySignup, db: Session = Depends(get_db)):
         dashboard_username=payload.dashboard_username,
         dashboard_password_hash=auth.hash_password(payload.dashboard_password),
         plan=payload.plan,
+        currency=payload.currency,
     )
     db.add(company)
     db.commit()
@@ -66,7 +79,7 @@ def signup(payload: schemas.CompanySignup, db: Session = Depends(get_db)):
 
     return schemas.CompanySignupOut(
         company_id=company.id, company_name=company.name, api_key=company.api_key,
-        dashboard_username=company.dashboard_username, plan=company.plan,
+        dashboard_username=company.dashboard_username, plan=company.plan, currency=company.currency,
     )
 
 
@@ -217,6 +230,20 @@ async def delete_transaction(
     await manager.broadcast_to_company(company.id, {"kind": "transactions_changed"})
 
     return {"status": "deleted"}
+
+
+@app.get("/transactions/mine", response_model=List[schemas.TransactionOut])
+def my_transactions(
+    employee_username: str,
+    employee_password: str,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_api_key)
+):
+    employee = auth.verify_employee(company, employee_username, employee_password, db)
+    return db.query(models.Transaction).filter(
+        models.Transaction.company_id == company.id,
+        models.Transaction.employee_id == employee.username
+    ).order_by(models.Transaction.created_at.desc()).limit(200).all()
 
 
 @app.get("/transactions", response_model=List[schemas.TransactionOut])
