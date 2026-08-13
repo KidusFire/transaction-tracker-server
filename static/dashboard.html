@@ -84,7 +84,7 @@
 
   <h2>Transactions</h2>
   <table>
-    <thead><tr><th>Time</th><th>Employee</th><th>Type</th><th>Amount</th><th>Category</th><th>Note</th></tr></thead>
+    <thead><tr><th>Time</th><th>Employee</th><th>Type</th><th>Amount</th><th>Category</th><th>Note</th><th></th></tr></thead>
     <tbody id="tx-body"></tbody>
   </table>
 
@@ -121,15 +121,84 @@
       document.getElementById("lowstock-total").textContent = lowCount;
     }
 
+    let allTransactions = {};   // id -> transaction data, kept in sync for editing
+
     function addTxRow(tx, highlight) {
+      allTransactions[tx.id] = tx;
       const row = document.createElement("tr");
+      row.id = `tx-row-${tx.id}`;
       if (highlight) row.classList.add("new-row");
       const dateTime = new Date(tx.created_at).toLocaleString();
       row.innerHTML = `
         <td>${dateTime}</td><td>${tx.employee_id}</td>
         <td class="type-${tx.type}">${tx.type}</td>
-        <td>${tx.amount.toLocaleString()}</td><td>${tx.category}</td><td>${tx.note || ""}</td>`;
+        <td>${tx.amount.toLocaleString()}</td><td>${tx.category}</td><td>${tx.note || ""}</td>
+        <td>
+          <button onclick="editTransaction(${tx.id})" style="cursor:pointer;">Edit</button>
+          <button onclick="deleteTransaction(${tx.id})" style="cursor:pointer;">Delete</button>
+        </td>`;
       txBody.prepend(row);
+    }
+
+    async function editTransaction(id) {
+      const tx = allTransactions[id];
+      if (!tx) return;
+
+      const newType = prompt("Type ('income' or 'expense'):", tx.type);
+      if (newType === null) return;
+
+      const newAmount = prompt("Amount:", tx.amount);
+      if (newAmount === null) return;
+
+      const newCategory = prompt("Category:", tx.category);
+      if (newCategory === null) return;
+
+      const newNote = prompt("Note:", tx.note || "");
+      if (newNote === null) return;
+
+      const res = await fetch(`/transactions/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": authHeader },
+        body: JSON.stringify({
+          type: newType.trim(), amount: parseFloat(newAmount) || 0,
+          category: newCategory.trim(), note: newNote.trim() || null,
+        })
+      });
+
+      if (!res.ok) {
+        alert("Failed to update transaction.");
+        return;
+      }
+      reloadTransactions();
+    }
+
+    async function deleteTransaction(id) {
+      if (!confirm("Delete this transaction? This cannot be undone.")) return;
+
+      const res = await fetch(`/transactions/${id}`, {
+        method: "DELETE",
+        headers: { "Authorization": authHeader }
+      });
+
+      if (!res.ok) {
+        alert("Failed to delete transaction.");
+        return;
+      }
+      reloadTransactions();
+    }
+
+    async function reloadTransactions() {
+      const opts = { headers: { "Authorization": authHeader } };
+      txBody.innerHTML = "";
+      allTransactions = {};
+
+      const summary = await fetch("/summary/today", opts).then(r => r.json());
+      todayIncome = summary.income;
+      todayExpense = summary.expense;
+      updateSummary();
+
+      const transactions = await fetch("/transactions", opts).then(r => r.json());
+      transactions.forEach(tx => addTxRow(tx, false));
     }
 
     function renderInventoryTable() {
@@ -349,6 +418,8 @@
         } else if (msg.kind === "item_updated") {
           inventoryItems[msg.id] = msg;
           renderInventoryTable();
+        } else if (msg.kind === "transactions_changed") {
+          reloadTransactions();
         }
       };
 

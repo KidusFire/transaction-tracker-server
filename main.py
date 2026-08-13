@@ -163,6 +163,52 @@ async def create_transaction(
     return db_tx
 
 
+@app.put("/transactions/{tx_id}", response_model=schemas.TransactionOut)
+async def update_transaction(
+    tx_id: int,
+    payload: schemas.TransactionUpdate,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    tx = db.query(models.Transaction).filter(
+        models.Transaction.id == tx_id, models.Transaction.company_id == company.id
+    ).first()
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    update_data = payload.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(tx, field, value)
+
+    db.add(tx)
+    db.commit()
+    db.refresh(tx)
+
+    await manager.broadcast_to_company(company.id, {"kind": "transactions_changed"})
+
+    return tx
+
+
+@app.delete("/transactions/{tx_id}")
+async def delete_transaction(
+    tx_id: int,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    tx = db.query(models.Transaction).filter(
+        models.Transaction.id == tx_id, models.Transaction.company_id == company.id
+    ).first()
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    db.delete(tx)
+    db.commit()
+
+    await manager.broadcast_to_company(company.id, {"kind": "transactions_changed"})
+
+    return {"status": "deleted"}
+
+
 @app.get("/transactions", response_model=List[schemas.TransactionOut])
 def list_transactions(
     db: Session = Depends(get_db),

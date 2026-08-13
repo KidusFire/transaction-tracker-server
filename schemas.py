@@ -28,6 +28,13 @@ class TransactionOut(BaseModel):
         from_attributes = True
 
 
+class TransactionUpdate(BaseModel):
+    type: Optional[str] = None
+    amount: Optional[float] = None
+    category: Optional[str] = None
+    note: Optional[str] = None
+
+
 class CompanySignup(BaseModel):
     company_name: str
     dashboard_username: str
