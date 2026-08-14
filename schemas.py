@@ -12,6 +12,8 @@ class TransactionCreate(BaseModel):
     note: Optional[str] = None
     created_at: Optional[datetime] = None
     synced_from_offline: Optional[bool] = False
+    receipt_image: Optional[str] = None   # base64-encoded image
+    receipt_mime: Optional[str] = None    # e.g. "image/jpeg"
 
 
 class TransactionOut(BaseModel):
@@ -23,6 +25,7 @@ class TransactionOut(BaseModel):
     note: Optional[str]
     created_at: datetime
     synced_from_offline: bool
+    receipt_mime: Optional[str] = None   # presence of this tells the dashboard a receipt exists
 
     class Config:
         from_attributes = True

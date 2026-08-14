@@ -31,6 +31,14 @@ with engine.connect() as conn:
     except Exception:
         pass
 
+with engine.connect() as conn:
+    try:
+        conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS receipt_image TEXT"))
+        conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS receipt_mime VARCHAR"))
+        conn.commit()
+    except Exception:
+        pass
+
 app = FastAPI(title="Company Transaction & Inventory Tracker")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -172,6 +180,7 @@ async def create_transaction(
         company_id=company.id, employee_id=employee.username, type=tx.type,
         amount=tx.amount, category=tx.category, note=tx.note,
         created_at=tx.created_at or datetime.utcnow(), synced_from_offline=tx.synced_from_offline,
+        receipt_image=tx.receipt_image, receipt_mime=tx.receipt_mime,
     )
     db.add(db_tx)
     db.commit()
@@ -182,8 +191,24 @@ async def create_transaction(
         "id": db_tx.id, "employee_id": db_tx.employee_id, "type": db_tx.type,
         "amount": db_tx.amount, "category": db_tx.category, "note": db_tx.note,
         "created_at": db_tx.created_at, "synced_from_offline": db_tx.synced_from_offline,
+        "receipt_mime": db_tx.receipt_mime,
     })
     return db_tx
+
+
+@app.get("/transactions/{tx_id}/receipt")
+def get_receipt(
+    tx_id: int,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    tx = db.query(models.Transaction).filter(
+        models.Transaction.id == tx_id, models.Transaction.company_id == company.id
+    ).first()
+    if not tx or not tx.receipt_image:
+        raise HTTPException(status_code=404, detail="No receipt found for this transaction")
+
+    return {"receipt_image": tx.receipt_image, "receipt_mime": tx.receipt_mime}
 
 
 @app.put("/transactions/{tx_id}", response_model=schemas.TransactionOut)

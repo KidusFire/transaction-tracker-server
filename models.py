@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -51,6 +51,8 @@ class Transaction(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     synced_from_offline = Column(Boolean, default=False)
     inventory_item_id = Column(Integer, ForeignKey("inventory_items.id"), nullable=True)
+    receipt_image = Column(Text, nullable=True)   # base64-encoded image data
+    receipt_mime = Column(String, nullable=True)  # e.g. "image/jpeg"
 
     company = relationship("Company", back_populates="transactions")
 
