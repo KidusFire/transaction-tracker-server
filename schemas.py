@@ -85,6 +85,7 @@ class InventoryItemCreate(BaseModel):
     sku: str
     name: str
     unit: str = "pcs"
+    category: str = "raw_material"   # "raw_material" or "fixed_asset"
     quantity_on_hand: float = 0
     reorder_level: float = 0
     unit_cost: float = 0
@@ -95,6 +96,7 @@ class InventoryItemOut(BaseModel):
     sku: str
     name: str
     unit: str
+    category: str
     quantity_on_hand: float
     reorder_level: float
     unit_cost: float
@@ -106,8 +108,45 @@ class InventoryItemOut(BaseModel):
 class InventoryItemUpdate(BaseModel):
     name: Optional[str] = None
     unit: Optional[str] = None
+    category: Optional[str] = None
     reorder_level: Optional[float] = None
     unit_cost: Optional[float] = None
+
+
+class RequisitionCreate(BaseModel):
+    inventory_item_id: int
+    employee_username: str
+    employee_password: str
+    quantity_requested: float
+    product_reference: Optional[str] = None
+
+
+class RequisitionClose(BaseModel):
+    employee_username: str
+    employee_password: str
+    quantity_consumed: float
+    quantity_returned: float = 0
+
+
+class RequisitionOut(BaseModel):
+    id: int
+    inventory_item_id: int
+    item_name: Optional[str] = None
+    sku: Optional[str] = None
+    employee_id: str
+    product_reference: Optional[str]
+    quantity_requested: float
+    quantity_issued: float
+    quantity_consumed: Optional[float]
+    quantity_returned: Optional[float]
+    wastage: Optional[float]
+    status: str
+    created_at: datetime
+    closed_at: Optional[datetime]
+    closed_by: Optional[str]
+
+    class Config:
+        from_attributes = True
 
 
 class StockMovementCreate(BaseModel):

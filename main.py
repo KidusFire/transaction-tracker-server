@@ -39,6 +39,13 @@ with engine.connect() as conn:
     except Exception:
         pass
 
+with engine.connect() as conn:
+    try:
+        conn.execute(text("ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS category VARCHAR DEFAULT 'raw_material'"))
+        conn.commit()
+    except Exception:
+        pass
+
 app = FastAPI(title="Company Transaction & Inventory Tracker")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -505,6 +512,188 @@ def list_movements(
             "reason": m.reason,
             "created_at": m.created_at,
         })
+    return result
+
+
+@app.post("/inventory/requisitions", response_model=schemas.RequisitionOut)
+async def create_requisition(
+    payload: schemas.RequisitionCreate,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_api_key)
+):
+    employee = auth.verify_employee(company, payload.employee_username, payload.employee_password, db)
+
+    item = db.query(models.InventoryItem).filter(
+        models.InventoryItem.id == payload.inventory_item_id, models.InventoryItem.company_id == company.id
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    if payload.quantity_requested <= 0:
+        raise HTTPException(status_code=400, detail="Requested quantity must be greater than zero")
+
+    # Issue whatever is actually available, even if less than requested — the requisition
+    # record keeps both numbers so the shortfall is visible, not just silently capped.
+    quantity_issued = min(payload.quantity_requested, item.quantity_on_hand)
+    if quantity_issued <= 0:
+        raise HTTPException(status_code=400, detail="No stock available to issue for this item")
+
+    item.quantity_on_hand -= quantity_issued
+    db.add(item)
+
+    requisition = models.Requisition(
+        company_id=company.id, inventory_item_id=item.id, employee_id=employee.username,
+        product_reference=payload.product_reference, quantity_requested=payload.quantity_requested,
+        quantity_issued=quantity_issued, status="open",
+    )
+    db.add(requisition)
+
+    movement = models.StockMovement(
+        company_id=company.id, inventory_item_id=item.id, employee_id=employee.username,
+        direction="out", quantity=quantity_issued,
+        reason=f"Requisition issued" + (f" — {payload.product_reference}" if payload.product_reference else ""),
+        resulting_quantity_on_hand=item.quantity_on_hand,
+    )
+    db.add(movement)
+    db.commit()
+    db.refresh(requisition)
+
+    await manager.broadcast_to_company(company.id, {
+        "kind": "stock_movement",
+        "inventory_item_id": item.id, "item_name": item.name, "sku": item.sku,
+        "direction": "out", "quantity": quantity_issued,
+        "quantity_on_hand": item.quantity_on_hand, "reorder_level": item.reorder_level,
+        "reason": movement.reason,
+    })
+    await manager.broadcast_to_company(company.id, {"kind": "requisitions_changed"})
+
+    return schemas.RequisitionOut(
+        id=requisition.id, inventory_item_id=item.id, item_name=item.name, sku=item.sku,
+        employee_id=requisition.employee_id, product_reference=requisition.product_reference,
+        quantity_requested=requisition.quantity_requested, quantity_issued=requisition.quantity_issued,
+        quantity_consumed=None, quantity_returned=None, wastage=None, status=requisition.status,
+        created_at=requisition.created_at, closed_at=None, closed_by=None,
+    )
+
+
+@app.put("/inventory/requisitions/{req_id}/close", response_model=schemas.RequisitionOut)
+async def close_requisition(
+    req_id: int,
+    payload: schemas.RequisitionClose,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_api_key)
+):
+    employee = auth.verify_employee(company, payload.employee_username, payload.employee_password, db)
+
+    requisition = db.query(models.Requisition).filter(
+        models.Requisition.id == req_id, models.Requisition.company_id == company.id
+    ).first()
+    if not requisition:
+        raise HTTPException(status_code=404, detail="Requisition not found")
+    if requisition.status == "closed":
+        raise HTTPException(status_code=400, detail="This requisition is already closed")
+
+    consumed = payload.quantity_consumed
+    returned = payload.quantity_returned
+    if consumed < 0 or returned < 0:
+        raise HTTPException(status_code=400, detail="Consumed and returned quantities cannot be negative")
+    if consumed + returned > requisition.quantity_issued:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Consumed + returned ({consumed + returned}) cannot exceed the {requisition.quantity_issued} issued"
+        )
+
+    wastage = requisition.quantity_issued - consumed - returned
+
+    requisition.quantity_consumed = consumed
+    requisition.quantity_returned = returned
+    requisition.wastage = wastage
+    requisition.status = "closed"
+    requisition.closed_at = datetime.utcnow()
+    requisition.closed_by = employee.username
+    db.add(requisition)
+
+    item = db.query(models.InventoryItem).filter(models.InventoryItem.id == requisition.inventory_item_id).first()
+    if returned > 0 and item:
+        item.quantity_on_hand += returned
+        db.add(item)
+        movement = models.StockMovement(
+            company_id=company.id, inventory_item_id=item.id, employee_id=employee.username,
+            direction="in", quantity=returned,
+            reason=f"Unused material returned from requisition #{requisition.id}",
+            resulting_quantity_on_hand=item.quantity_on_hand,
+        )
+        db.add(movement)
+
+    db.commit()
+    db.refresh(requisition)
+
+    await manager.broadcast_to_company(company.id, {"kind": "requisitions_changed"})
+    if returned > 0 and item:
+        await manager.broadcast_to_company(company.id, {
+            "kind": "stock_movement",
+            "inventory_item_id": item.id, "item_name": item.name, "sku": item.sku,
+            "direction": "in", "quantity": returned,
+            "quantity_on_hand": item.quantity_on_hand, "reorder_level": item.reorder_level,
+            "reason": f"Unused material returned from requisition #{requisition.id}",
+        })
+
+    return schemas.RequisitionOut(
+        id=requisition.id, inventory_item_id=requisition.inventory_item_id,
+        item_name=item.name if item else None, sku=item.sku if item else None,
+        employee_id=requisition.employee_id, product_reference=requisition.product_reference,
+        quantity_requested=requisition.quantity_requested, quantity_issued=requisition.quantity_issued,
+        quantity_consumed=requisition.quantity_consumed, quantity_returned=requisition.quantity_returned,
+        wastage=requisition.wastage, status=requisition.status,
+        created_at=requisition.created_at, closed_at=requisition.closed_at, closed_by=requisition.closed_by,
+    )
+
+
+@app.get("/inventory/requisitions/open/lookup", response_model=List[schemas.RequisitionOut])
+def lookup_open_requisitions(
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_api_key)
+):
+    """Lightweight list of open requisitions for the employee app (to pick one to close)."""
+    reqs = db.query(models.Requisition).filter(
+        models.Requisition.company_id == company.id, models.Requisition.status == "open"
+    ).order_by(models.Requisition.created_at.desc()).all()
+
+    result = []
+    for r in reqs:
+        item = db.query(models.InventoryItem).filter(models.InventoryItem.id == r.inventory_item_id).first()
+        result.append(schemas.RequisitionOut(
+            id=r.id, inventory_item_id=r.inventory_item_id,
+            item_name=item.name if item else None, sku=item.sku if item else None,
+            employee_id=r.employee_id, product_reference=r.product_reference,
+            quantity_requested=r.quantity_requested, quantity_issued=r.quantity_issued,
+            quantity_consumed=None, quantity_returned=None, wastage=None, status=r.status,
+            created_at=r.created_at, closed_at=None, closed_by=None,
+        ))
+    return result
+
+
+@app.get("/inventory/requisitions", response_model=List[schemas.RequisitionOut])
+def list_requisitions(
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    """Full requisition history for the dashboard, including closed ones with wastage."""
+    reqs = db.query(models.Requisition).filter(
+        models.Requisition.company_id == company.id
+    ).order_by(models.Requisition.created_at.desc()).limit(200).all()
+
+    result = []
+    for r in reqs:
+        item = db.query(models.InventoryItem).filter(models.InventoryItem.id == r.inventory_item_id).first()
+        result.append(schemas.RequisitionOut(
+            id=r.id, inventory_item_id=r.inventory_item_id,
+            item_name=item.name if item else "(deleted item)", sku=item.sku if item else "",
+            employee_id=r.employee_id, product_reference=r.product_reference,
+            quantity_requested=r.quantity_requested, quantity_issued=r.quantity_issued,
+            quantity_consumed=r.quantity_consumed, quantity_returned=r.quantity_returned,
+            wastage=r.wastage, status=r.status,
+            created_at=r.created_at, closed_at=r.closed_at, closed_by=r.closed_by,
+        ))
     return result
 
 

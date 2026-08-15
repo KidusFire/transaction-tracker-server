@@ -103,8 +103,15 @@
   <h2>Inventory</h2>
   <input type="text" id="inv-search" class="search-box" placeholder="Search by SKU or name...">
   <table>
-    <thead><tr><th>SKU</th><th>Name</th><th>Qty on Hand</th><th>Unit</th><th>Reorder Level</th><th>Unit Cost</th><th>Value</th><th></th></tr></thead>
+    <thead><tr><th>SKU</th><th>Name</th><th>Category</th><th>Qty on Hand</th><th>Unit</th><th>Reorder Level</th><th>Unit Cost</th><th>Value</th><th></th></tr></thead>
     <tbody id="inv-body"></tbody>
+  </table>
+
+  <h2>Requisitions (Store → Process → Final Product)</h2>
+  <input type="text" id="req-search" class="search-box" placeholder="Search by item, employee, or product reference...">
+  <table>
+    <thead><tr><th>Item</th><th>Employee</th><th>Product / Job</th><th>Requested</th><th>Issued</th><th>Consumed</th><th>Returned</th><th>Wastage</th><th>Status</th><th>Opened</th><th>Closed</th></tr></thead>
+    <tbody id="req-body"></tbody>
   </table>
 
   <h2>Recent Stock Movements</h2>
@@ -268,8 +275,9 @@
         const isLow = item.quantity_on_hand <= item.reorder_level;
         if (isLow) row.classList.add("low-stock-row");
         const value = item.quantity_on_hand * (item.unit_cost || 0);
+        const categoryLabel = item.category === "fixed_asset" ? "Fixed Asset" : "Raw Material";
         row.innerHTML = `
-          <td>${item.sku}</td><td>${item.name}</td>
+          <td>${item.sku}</td><td>${item.name}</td><td>${categoryLabel}</td>
           <td>${item.quantity_on_hand}${isLow ? " ⚠" : ""}</td>
           <td>${item.unit}</td><td>${item.reorder_level}</td>
           <td>${fmt(item.unit_cost || 0)}</td><td>${fmt(value)}</td>
@@ -343,6 +351,42 @@
     }
 
     document.getElementById("move-search").addEventListener("input", renderMovementsTable);
+
+    let allRequisitions = {};
+
+    async function loadRequisitions() {
+      const opts = { headers: { "Authorization": authHeader } };
+      const reqs = await fetch("/inventory/requisitions", opts).then(r => r.json());
+      allRequisitions = {};
+      reqs.forEach(r => { allRequisitions[r.id] = r; });
+      renderRequisitionsTable();
+    }
+
+    function renderRequisitionsTable() {
+      const filter = (document.getElementById("req-search").value || "").toLowerCase();
+      const bodyEl = document.getElementById("req-body");
+      bodyEl.innerHTML = "";
+      Object.values(allRequisitions)
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        .forEach(r => {
+          const haystack = `${r.item_name} ${r.employee_id} ${r.product_reference || ""}`.toLowerCase();
+          if (filter && !haystack.includes(filter)) return;
+
+          const row = document.createElement("tr");
+          if (r.wastage && r.wastage > 0) row.classList.add("low-stock-row");
+          const opened = new Date(r.created_at).toLocaleString();
+          const closed = r.closed_at ? new Date(r.closed_at).toLocaleString() : "";
+          row.innerHTML = `
+            <td>${r.item_name} (${r.sku})</td><td>${r.employee_id}</td><td>${r.product_reference || ""}</td>
+            <td>${r.quantity_requested}</td><td>${r.quantity_issued}</td>
+            <td>${r.quantity_consumed ?? ""}</td><td>${r.quantity_returned ?? ""}</td>
+            <td>${r.wastage ?? ""}${r.wastage > 0 ? " ⚠" : ""}</td>
+            <td>${r.status}</td><td>${opened}</td><td>${closed}</td>`;
+          bodyEl.appendChild(row);
+        });
+    }
+
+    document.getElementById("req-search").addEventListener("input", renderRequisitionsTable);
 
     async function runReport() {
       const errorEl = document.getElementById("report-error");
@@ -479,6 +523,8 @@
       const movements = await fetch("/inventory/movements", opts).then(r => r.json());
       movements.forEach(m => { allMovements[m.id] = m; });
       renderMovementsTable();
+
+      await loadRequisitions();
     }
 
     function connectWebSocket() {
@@ -509,6 +555,8 @@
           renderInventoryTable();
         } else if (msg.kind === "transactions_changed") {
           reloadTransactions();
+        } else if (msg.kind === "requisitions_changed") {
+          loadRequisitions();
         }
       };
 

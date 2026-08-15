@@ -65,12 +65,39 @@ class InventoryItem(Base):
     sku = Column(String, index=True)
     name = Column(String)
     unit = Column(String, default="pcs")
+    category = Column(String, default="raw_material")  # "raw_material" or "fixed_asset"
     quantity_on_hand = Column(Float, default=0)
     reorder_level = Column(Float, default=0)
     unit_cost = Column(Float, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     company = relationship("Company", back_populates="inventory_items")
+
+
+class Requisition(Base):
+    """
+    Tracks a raw material's journey from the store to a production job.
+    Stage 1 (store): before this exists, material just sits in InventoryItem.quantity_on_hand.
+    Stage 2 (process/WIP): status="open" — issued to production, not yet accounted for.
+    Stage 3 (final product): status="closed" — quantity_consumed went into the finished good,
+    quantity_returned went back to the store, and wastage = issued - consumed - returned.
+    """
+    __tablename__ = "requisitions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), index=True)
+    inventory_item_id = Column(Integer, ForeignKey("inventory_items.id"), index=True)
+    employee_id = Column(String)              # who requested/issued it
+    product_reference = Column(String, nullable=True)  # e.g. "Transformer Unit #12"
+    quantity_requested = Column(Float)
+    quantity_issued = Column(Float)           # what actually left the store (may be less if short on stock)
+    quantity_consumed = Column(Float, nullable=True)   # filled in when closed
+    quantity_returned = Column(Float, nullable=True)   # unused material sent back to store
+    wastage = Column(Float, nullable=True)             # computed on close
+    status = Column(String, default="open")   # "open" or "closed"
+    created_at = Column(DateTime, default=datetime.utcnow)
+    closed_at = Column(DateTime, nullable=True)
+    closed_by = Column(String, nullable=True)
 
 
 class StockMovement(Base):
