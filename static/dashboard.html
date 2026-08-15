@@ -41,6 +41,7 @@
     <div class="card net"><div class="label">Net</div><div class="value" id="net-total">0</div></div>
     <div class="card lowstock"><div class="label">Low Stock Items</div><div class="value" id="lowstock-total">0</div></div>
     <div class="card value2"><div class="label">Inventory Value</div><div class="value" id="inventory-value">0</div></div>
+    <div class="card value2"><div class="label">Fixed Asset Book Value</div><div class="value" id="asset-book-value">0</div></div>
   </div>
 
   <h2>Reports</h2>
@@ -100,11 +101,18 @@
     </div>
   </div>
 
-  <h2>Inventory</h2>
+  <h2>Raw Materials Inventory</h2>
   <input type="text" id="inv-search" class="search-box" placeholder="Search by SKU or name...">
   <table>
-    <thead><tr><th>SKU</th><th>Name</th><th>Category</th><th>Qty on Hand</th><th>Unit</th><th>Reorder Level</th><th>Unit Cost</th><th>Value</th><th></th></tr></thead>
+    <thead><tr><th>SKU</th><th>Name</th><th>Qty on Hand</th><th>Unit</th><th>Reorder Level</th><th>Unit Cost</th><th>Value</th><th></th></tr></thead>
     <tbody id="inv-body"></tbody>
+  </table>
+
+  <h2>Fixed Asset Register</h2>
+  <input type="text" id="far-search" class="search-box" placeholder="Search by SKU, name, serial, or location...">
+  <table>
+    <thead><tr><th>SKU</th><th>Name</th><th>Serial #</th><th>Location</th><th>Condition</th><th>Acquired</th><th>Cost</th><th>Useful Life</th><th>Accum. Depreciation</th><th>Book Value</th><th></th></tr></thead>
+    <tbody id="far-body"></tbody>
   </table>
 
   <h2>Requisitions (Store → Process → Final Product)</h2>
@@ -146,10 +154,18 @@
       document.getElementById("income-total").textContent = fmt(todayIncome);
       document.getElementById("expense-total").textContent = fmt(todayExpense);
       document.getElementById("net-total").textContent = fmt(todayIncome - todayExpense);
-      const lowCount = Object.values(inventoryItems).filter(i => i.quantity_on_hand <= i.reorder_level).length;
+
+      const rawMaterials = Object.values(inventoryItems).filter(i => i.category !== "fixed_asset");
+      const fixedAssets = Object.values(inventoryItems).filter(i => i.category === "fixed_asset");
+
+      const lowCount = rawMaterials.filter(i => i.quantity_on_hand <= i.reorder_level).length;
       document.getElementById("lowstock-total").textContent = lowCount;
-      const totalValue = Object.values(inventoryItems).reduce((sum, i) => sum + (i.quantity_on_hand * (i.unit_cost || 0)), 0);
-      document.getElementById("inventory-value").textContent = fmt(totalValue);
+
+      const rawValue = rawMaterials.reduce((sum, i) => sum + (i.quantity_on_hand * (i.unit_cost || 0)), 0);
+      document.getElementById("inventory-value").textContent = fmt(rawValue);
+
+      const assetBookValue = fixedAssets.reduce((sum, i) => sum + calcDepreciation(i).bookValue, 0);
+      document.getElementById("asset-book-value").textContent = fmt(assetBookValue);
     }
 
     function addTxRow(tx, highlight) {
@@ -264,10 +280,26 @@
       renderTransactionsTable();
     }
 
+    function calcDepreciation(item) {
+      // Straight-line depreciation: (cost - salvage) spread evenly over useful_life_years.
+      if (!item.acquisition_date || !item.useful_life_years || item.useful_life_years <= 0) {
+        return { accumulated: null, bookValue: item.unit_cost || 0 };
+      }
+      const cost = item.unit_cost || 0;
+      const salvage = item.salvage_value || 0;
+      const acquired = new Date(item.acquisition_date);
+      const now = new Date();
+      const yearsElapsed = (now - acquired) / (1000 * 60 * 60 * 24 * 365.25);
+      const fractionUsed = Math.min(Math.max(yearsElapsed / item.useful_life_years, 0), 1);
+      const accumulated = (cost - salvage) * fractionUsed;
+      const bookValue = cost - accumulated;
+      return { accumulated, bookValue };
+    }
+
     function renderInventoryTable() {
       const filter = (document.getElementById("inv-search").value || "").toLowerCase();
       invBody.innerHTML = "";
-      Object.values(inventoryItems).forEach(item => {
+      Object.values(inventoryItems).filter(i => i.category !== "fixed_asset").forEach(item => {
         const haystack = `${item.sku} ${item.name}`.toLowerCase();
         if (filter && !haystack.includes(filter)) return;
 
@@ -275,9 +307,8 @@
         const isLow = item.quantity_on_hand <= item.reorder_level;
         if (isLow) row.classList.add("low-stock-row");
         const value = item.quantity_on_hand * (item.unit_cost || 0);
-        const categoryLabel = item.category === "fixed_asset" ? "Fixed Asset" : "Raw Material";
         row.innerHTML = `
-          <td>${item.sku}</td><td>${item.name}</td><td>${categoryLabel}</td>
+          <td>${item.sku}</td><td>${item.name}</td>
           <td>${item.quantity_on_hand}${isLow ? " ⚠" : ""}</td>
           <td>${item.unit}</td><td>${item.reorder_level}</td>
           <td>${fmt(item.unit_cost || 0)}</td><td>${fmt(value)}</td>
@@ -285,9 +316,36 @@
         invBody.appendChild(row);
       });
       updateSummary();
+      renderFixedAssetTable();
     }
 
     document.getElementById("inv-search").addEventListener("input", renderInventoryTable);
+
+    function renderFixedAssetTable() {
+      const filter = (document.getElementById("far-search").value || "").toLowerCase();
+      const bodyEl = document.getElementById("far-body");
+      bodyEl.innerHTML = "";
+      Object.values(inventoryItems).filter(i => i.category === "fixed_asset").forEach(item => {
+        const haystack = `${item.sku} ${item.name} ${item.serial_number || ""} ${item.location || ""}`.toLowerCase();
+        if (filter && !haystack.includes(filter)) return;
+
+        const { accumulated, bookValue } = calcDepreciation(item);
+        const acquired = item.acquisition_date ? new Date(item.acquisition_date).toLocaleDateString() : "";
+        const usefulLife = item.useful_life_years ? `${item.useful_life_years} yrs` : "";
+
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${item.sku}</td><td>${item.name}</td><td>${item.serial_number || ""}</td>
+          <td>${item.location || ""}</td><td>${item.condition || ""}</td><td>${acquired}</td>
+          <td>${fmt(item.unit_cost || 0)}</td><td>${usefulLife}</td>
+          <td>${accumulated !== null ? fmt(accumulated) : "—"}</td>
+          <td>${fmt(bookValue)}</td>
+          <td><button onclick="editItem(${item.id})" style="cursor:pointer;">Edit</button></td>`;
+        bodyEl.appendChild(row);
+      });
+    }
+
+    document.getElementById("far-search").addEventListener("input", renderFixedAssetTable);
 
     async function editItem(id) {
       const item = inventoryItems[id];
@@ -305,14 +363,44 @@
       const newCost = prompt("Unit cost:", item.unit_cost);
       if (newCost === null) return;
 
+      const updatePayload = {
+        name: newName, unit: newUnit,
+        reorder_level: parseFloat(newReorder) || 0,
+        unit_cost: parseFloat(newCost) || 0,
+      };
+
+      if (item.category === "fixed_asset") {
+        const currentAcqDate = item.acquisition_date ? item.acquisition_date.split("T")[0] : "";
+        const newAcqDate = prompt("Acquisition date (YYYY-MM-DD, leave blank if unknown):", currentAcqDate);
+        if (newAcqDate === null) return;
+
+        const newLocation = prompt("Location:", item.location || "");
+        if (newLocation === null) return;
+
+        const newSerial = prompt("Serial number:", item.serial_number || "");
+        if (newSerial === null) return;
+
+        const newCondition = prompt("Condition (New / Good / Fair / Poor / Under Repair):", item.condition || "");
+        if (newCondition === null) return;
+
+        const newUsefulLife = prompt("Useful life in years (leave blank if unknown):", item.useful_life_years || "");
+        if (newUsefulLife === null) return;
+
+        const newSalvage = prompt("Salvage value:", item.salvage_value || 0);
+        if (newSalvage === null) return;
+
+        if (newAcqDate.trim()) updatePayload.acquisition_date = newAcqDate.trim();
+        updatePayload.location = newLocation.trim() || null;
+        updatePayload.serial_number = newSerial.trim() || null;
+        updatePayload.condition = newCondition.trim() || null;
+        if (newUsefulLife.trim()) updatePayload.useful_life_years = parseFloat(newUsefulLife) || null;
+        updatePayload.salvage_value = parseFloat(newSalvage) || 0;
+      }
+
       const res = await fetch(`/inventory/items/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", "Authorization": authHeader },
-        body: JSON.stringify({
-          name: newName, unit: newUnit,
-          reorder_level: parseFloat(newReorder) || 0,
-          unit_cost: parseFloat(newCost) || 0,
-        })
+        body: JSON.stringify(updatePayload)
       });
 
       if (!res.ok) {

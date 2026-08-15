@@ -46,6 +46,18 @@ with engine.connect() as conn:
     except Exception:
         pass
 
+with engine.connect() as conn:
+    try:
+        conn.execute(text("ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS acquisition_date TIMESTAMP"))
+        conn.execute(text("ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS location VARCHAR"))
+        conn.execute(text("ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS serial_number VARCHAR"))
+        conn.execute(text("ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS condition VARCHAR"))
+        conn.execute(text("ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS useful_life_years FLOAT"))
+        conn.execute(text("ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS salvage_value FLOAT DEFAULT 0"))
+        conn.commit()
+    except Exception:
+        pass
+
 app = FastAPI(title="Company Transaction & Inventory Tracker")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -405,8 +417,13 @@ async def update_item(
     await manager.broadcast_to_company(company.id, {
         "kind": "item_updated",
         "id": item.id, "sku": item.sku, "name": item.name, "unit": item.unit,
+        "category": item.category,
         "quantity_on_hand": item.quantity_on_hand, "reorder_level": item.reorder_level,
         "unit_cost": item.unit_cost,
+        "acquisition_date": item.acquisition_date.isoformat() if item.acquisition_date else None,
+        "location": item.location, "serial_number": item.serial_number,
+        "condition": item.condition, "useful_life_years": item.useful_life_years,
+        "salvage_value": item.salvage_value,
     })
 
     return item

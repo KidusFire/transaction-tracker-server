@@ -89,6 +89,12 @@ class InventoryItemCreate(BaseModel):
     quantity_on_hand: float = 0
     reorder_level: float = 0
     unit_cost: float = 0
+    acquisition_date: Optional[datetime] = None
+    location: Optional[str] = None
+    serial_number: Optional[str] = None
+    condition: Optional[str] = None
+    useful_life_years: Optional[float] = None
+    salvage_value: Optional[float] = 0
 
 
 class InventoryItemOut(BaseModel):
@@ -100,6 +106,12 @@ class InventoryItemOut(BaseModel):
     quantity_on_hand: float
     reorder_level: float
     unit_cost: float
+    acquisition_date: Optional[datetime] = None
+    location: Optional[str] = None
+    serial_number: Optional[str] = None
+    condition: Optional[str] = None
+    useful_life_years: Optional[float] = None
+    salvage_value: Optional[float] = None
 
     class Config:
         from_attributes = True
@@ -111,6 +123,12 @@ class InventoryItemUpdate(BaseModel):
     category: Optional[str] = None
     reorder_level: Optional[float] = None
     unit_cost: Optional[float] = None
+    acquisition_date: Optional[datetime] = None
+    location: Optional[str] = None
+    serial_number: Optional[str] = None
+    condition: Optional[str] = None
+    useful_life_years: Optional[float] = None
+    salvage_value: Optional[float] = None
 
 
 class RequisitionCreate(BaseModel):

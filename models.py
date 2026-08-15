@@ -70,6 +70,13 @@ class InventoryItem(Base):
     reorder_level = Column(Float, default=0)
     unit_cost = Column(Float, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # Fixed Asset Register fields — only meaningful when category == "fixed_asset"
+    acquisition_date = Column(DateTime, nullable=True)
+    location = Column(String, nullable=True)
+    serial_number = Column(String, nullable=True)
+    condition = Column(String, nullable=True)       # e.g. "New", "Good", "Fair", "Poor", "Under Repair"
+    useful_life_years = Column(Float, nullable=True)
+    salvage_value = Column(Float, nullable=True, default=0)
 
     company = relationship("Company", back_populates="inventory_items")
 
