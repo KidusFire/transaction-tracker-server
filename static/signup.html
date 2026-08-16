@@ -56,6 +56,8 @@
       <strong>Account created!</strong>
       <div>Save your API key now — you'll need it to set up each employee's app, and it won't be shown again:</div>
       <code id="api-key-display"></code>
+      <div style="margin-top:14px;">Also save your <strong>recovery key</strong> — if you ever forget your dashboard password, this is the only way back in. Store it somewhere safe and separate from your password:</div>
+      <code id="recovery-key-display"></code>
       <div style="margin-top:10px;">Your dashboard: <a id="dashboard-link" href="#">Open Dashboard</a></div>
     </div>
   </div>
@@ -90,6 +92,7 @@
         document.getElementById("signup-form").style.display = "none";
         document.getElementById("result").style.display = "block";
         document.getElementById("api-key-display").textContent = data.api_key;
+        document.getElementById("recovery-key-display").textContent = data.recovery_key;
         document.getElementById("dashboard-link").href = "/dashboard";
       } catch (err) {
         errorEl.textContent = "Could not reach the server. Try again.";

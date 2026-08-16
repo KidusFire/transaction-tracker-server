@@ -55,6 +55,13 @@ with engine.connect() as conn:
 
 with engine.connect() as conn:
     try:
+        conn.execute(text("ALTER TABLE companies ADD COLUMN IF NOT EXISTS recovery_key_hash VARCHAR"))
+        conn.commit()
+    except Exception:
+        pass
+
+with engine.connect() as conn:
+    try:
         conn.execute(text("ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS acquisition_date TIMESTAMP"))
         conn.execute(text("ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS location VARCHAR"))
         conn.execute(text("ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS serial_number VARCHAR"))
@@ -86,6 +93,12 @@ def signup_page():
         return f.read()
 
 
+@app.get("/reset-password", response_class=HTMLResponse)
+def reset_password_page():
+    with open("static/reset-password.html", encoding="utf-8") as f:
+        return f.read()
+
+
 # ============ COMPANY SIGNUP ============
 
 @app.post("/companies/signup", response_model=schemas.CompanySignupOut)
@@ -99,6 +112,8 @@ def signup(payload: schemas.CompanySignup, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=400, detail="That dashboard username is already taken")
 
+    recovery_key = auth.generate_api_key()
+
     company = models.Company(
         name=payload.company_name,
         api_key=auth.generate_api_key(),
@@ -106,6 +121,7 @@ def signup(payload: schemas.CompanySignup, db: Session = Depends(get_db)):
         dashboard_password_hash=auth.hash_password(payload.dashboard_password),
         plan=payload.plan,
         currency=payload.currency,
+        recovery_key_hash=auth.hash_password(recovery_key),
     )
     db.add(company)
     db.commit()
@@ -114,7 +130,38 @@ def signup(payload: schemas.CompanySignup, db: Session = Depends(get_db)):
     return schemas.CompanySignupOut(
         company_id=company.id, company_name=company.name, api_key=company.api_key,
         dashboard_username=company.dashboard_username, plan=company.plan, currency=company.currency,
+        recovery_key=recovery_key,
     )
+
+
+@app.post("/companies/reset-password")
+def reset_password(payload: schemas.PasswordResetRequest, db: Session = Depends(get_db)):
+    company = db.query(models.Company).filter(
+        models.Company.dashboard_username == payload.dashboard_username
+    ).first()
+
+    if not company or not company.recovery_key_hash or not auth.verify_password(payload.recovery_key, company.recovery_key_hash):
+        raise HTTPException(status_code=401, detail="Username or recovery key is incorrect")
+
+    company.dashboard_password_hash = auth.hash_password(payload.new_password)
+    db.add(company)
+    db.commit()
+
+    return {"status": "password reset — you can log in with your new password now"}
+
+
+@app.post("/company/recovery-key/regenerate", response_model=schemas.RecoveryKeyOut)
+def regenerate_recovery_key(
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    """For accounts created before recovery keys existed, or if the old one was lost.
+    Generating a new one invalidates any previous recovery key."""
+    new_key = auth.generate_api_key()
+    company.recovery_key_hash = auth.hash_password(new_key)
+    db.add(company)
+    db.commit()
+    return schemas.RecoveryKeyOut(recovery_key=new_key)
 
 
 # ============ EMPLOYEE MANAGEMENT (dashboard/owner only) ============

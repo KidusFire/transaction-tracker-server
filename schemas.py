@@ -56,6 +56,7 @@ class CompanySignupOut(BaseModel):
     dashboard_username: str
     plan: str
     currency: str
+    recovery_key: str
 
 
 class CompanyOut(BaseModel):
@@ -66,6 +67,16 @@ class CompanyOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class PasswordResetRequest(BaseModel):
+    dashboard_username: str
+    recovery_key: str
+    new_password: str
+
+
+class RecoveryKeyOut(BaseModel):
+    recovery_key: str
 
 
 class EmployeeCreate(BaseModel):

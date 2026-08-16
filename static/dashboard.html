@@ -29,6 +29,10 @@
     .low-stock-row { background: #fff8e1; }
     .search-box { padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; width: 260px; max-width: 100%; margin-bottom: 10px; font-size: 14px; }
     @keyframes flash { from { background: #fff3cd; } to { background: white; } }
+
+    @media print {
+      button, input, .search-box, #status { display: none !important; }
+    }
   </style>
 </head>
 <body>
@@ -57,6 +61,8 @@
         <input type="date" id="report-end" style="padding:8px; border:1px solid #ddd; border-radius:6px;">
       </div>
       <button onclick="runReport()" style="padding:8px 16px; background:#2c3e50; color:white; border:none; border-radius:6px; cursor:pointer;">Get Report</button>
+      <button onclick="exportReportCSV()" style="padding:8px 16px; background:#2e8b57; color:white; border:none; border-radius:6px; cursor:pointer;">Export to Excel (CSV)</button>
+      <button onclick="window.print()" style="padding:8px 16px; background:#6c3483; color:white; border:none; border-radius:6px; cursor:pointer;">Print / Save as PDF</button>
     </div>
     <div id="report-error" style="color:#c0392b; font-size:13px; margin-top:10px;"></div>
     <div id="report-summary" style="display:none; margin-top:16px; display:flex; gap:16px; flex-wrap:wrap;"></div>
@@ -70,6 +76,20 @@
       <thead><tr><th>Date</th><th>Employee</th><th>Type</th><th>Amount</th><th>Category</th><th>Note / Reason</th></tr></thead>
       <tbody id="report-detail-body"></tbody>
     </table>
+  </div>
+
+  <h2>Account Recovery</h2>
+  <div style="background:white; border-radius:8px; padding:16px; margin-bottom:20px;">
+    <div style="font-size:13px; color:#666; margin-bottom:10px;">
+      If you ever forget your dashboard password, you'll need a recovery key to get back in.
+      Generate one now (or a new one if you've lost the old one) and save it somewhere safe —
+      it's shown only once.
+    </div>
+    <button onclick="regenerateRecoveryKey()" style="padding:8px 16px; background:#2c3e50; color:white; border:none; border-radius:6px; cursor:pointer;">Generate Recovery Key</button>
+    <div id="recovery-key-result" style="display:none; margin-top:12px; padding:12px; background:#eafaf1; border-radius:6px; font-size:13px;">
+      <strong>Save this now — it won't be shown again:</strong>
+      <code id="recovery-key-value" style="display:block; background:white; padding:8px; border-radius:4px; margin-top:6px; word-break:break-all;"></code>
+    </div>
   </div>
 
   <h2>Employees</h2>
@@ -497,6 +517,8 @@
 
     document.getElementById("req-search").addEventListener("input", renderRequisitionsTable);
 
+    let lastReportData = null;
+
     async function runReport() {
       const errorEl = document.getElementById("report-error");
       errorEl.textContent = "";
@@ -516,6 +538,8 @@
         errorEl.textContent = data.detail || "Failed to load report.";
         return;
       }
+
+      lastReportData = data;
 
       const summaryEl = document.getElementById("report-summary");
       const totalEntries = Object.entries(data.totals);
@@ -563,6 +587,47 @@
           detailBodyEl.appendChild(row);
         });
       }
+    }
+
+    function exportReportCSV() {
+      if (!lastReportData || lastReportData.transactions.length === 0) {
+        alert("Run a report first — there's nothing to export yet.");
+        return;
+      }
+
+      const rows = [["Date", "Employee", "Type", "Amount", "Currency", "Category", "Note"]];
+      lastReportData.transactions.forEach(tx => {
+        const dateTime = new Date(tx.created_at).toLocaleString();
+        rows.push([dateTime, tx.employee_id, tx.type, tx.amount, tx.currency, tx.category, tx.note || ""]);
+      });
+
+      const csvContent = rows.map(row =>
+        row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")
+      ).join("\n");
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      const start = document.getElementById("report-start").value;
+      const end = document.getElementById("report-end").value;
+      link.download = `transactions_${start}_to_${end}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    async function regenerateRecoveryKey() {
+      const res = await fetch("/company/recovery-key/regenerate", {
+        method: "POST",
+        headers: { "Authorization": authHeader }
+      });
+      if (!res.ok) {
+        alert("Failed to generate recovery key.");
+        return;
+      }
+      const data = await res.json();
+      document.getElementById("recovery-key-result").style.display = "block";
+      document.getElementById("recovery-key-value").textContent = data.recovery_key;
     }
 
     async function loadEmployees() {
