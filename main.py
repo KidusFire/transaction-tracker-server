@@ -41,6 +41,13 @@ with engine.connect() as conn:
 
 with engine.connect() as conn:
     try:
+        conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS currency VARCHAR DEFAULT 'USD'"))
+        conn.commit()
+    except Exception:
+        pass
+
+with engine.connect() as conn:
+    try:
         conn.execute(text("ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS category VARCHAR DEFAULT 'raw_material'"))
         conn.commit()
     except Exception:
@@ -200,6 +207,7 @@ async def create_transaction(
         amount=tx.amount, category=tx.category, note=tx.note,
         created_at=tx.created_at or datetime.utcnow(), synced_from_offline=tx.synced_from_offline,
         receipt_image=tx.receipt_image, receipt_mime=tx.receipt_mime,
+        currency=tx.currency or company.currency or "USD",
     )
     db.add(db_tx)
     db.commit()
@@ -210,7 +218,7 @@ async def create_transaction(
         "id": db_tx.id, "employee_id": db_tx.employee_id, "type": db_tx.type,
         "amount": db_tx.amount, "category": db_tx.category, "note": db_tx.note,
         "created_at": db_tx.created_at, "synced_from_offline": db_tx.synced_from_offline,
-        "receipt_mime": db_tx.receipt_mime,
+        "receipt_mime": db_tx.receipt_mime, "currency": db_tx.currency,
     })
     return db_tx
 
@@ -306,7 +314,8 @@ def summary_range(
     db: Session = Depends(get_db),
     company: models.Company = Depends(auth.get_company_from_dashboard_login)
 ):
-    """start_date and end_date as YYYY-MM-DD. Returns totals plus a day-by-day breakdown."""
+    """start_date and end_date as YYYY-MM-DD. Returns totals and a daily breakdown,
+    both grouped by currency — amounts in different currencies are never added together."""
     from datetime import datetime, timedelta
 
     try:
@@ -321,38 +330,40 @@ def summary_range(
         models.Transaction.created_at < end
     ).order_by(models.Transaction.created_at).all()
 
-    daily = {}
-    total_income = 0
-    total_expense = 0
+    daily = {}    # (date, currency) -> {income, expense}
+    totals = {}   # currency -> {income, expense}
 
     for tx in transactions:
+        cur = tx.currency or company.currency or "USD"
         day = tx.created_at.date().isoformat()
-        if day not in daily:
-            daily[day] = {"income": 0, "expense": 0}
-        daily[day][tx.type] += tx.amount
-        if tx.type == "income":
-            total_income += tx.amount
-        else:
-            total_expense += tx.amount
+        key = (day, cur)
+        daily.setdefault(key, {"income": 0, "expense": 0})
+        daily[key][tx.type] += tx.amount
+        totals.setdefault(cur, {"income": 0, "expense": 0})
+        totals[cur][tx.type] += tx.amount
 
     daily_breakdown = [
-        {"date": day, "income": vals["income"], "expense": vals["expense"], "net": vals["income"] - vals["expense"]}
-        for day, vals in sorted(daily.items())
+        {"date": day, "currency": cur, "income": vals["income"], "expense": vals["expense"],
+         "net": vals["income"] - vals["expense"]}
+        for (day, cur), vals in sorted(daily.items())
     ]
+
+    totals_out = {
+        cur: {"income": vals["income"], "expense": vals["expense"], "net": vals["income"] - vals["expense"]}
+        for cur, vals in totals.items()
+    }
 
     transaction_list = [
         {
             "id": tx.id, "employee_id": tx.employee_id, "type": tx.type,
             "amount": tx.amount, "category": tx.category, "note": tx.note,
-            "created_at": tx.created_at,
+            "created_at": tx.created_at, "currency": tx.currency or company.currency or "USD",
         }
         for tx in transactions
     ]
 
     return {
-        "income": total_income,
-        "expense": total_expense,
-        "net": total_income - total_expense,
+        "totals": totals_out,
         "daily": daily_breakdown,
         "transactions": transaction_list,
     }
@@ -363,13 +374,22 @@ def summary_today(
     db: Session = Depends(get_db),
     company: models.Company = Depends(auth.get_company_from_dashboard_login)
 ):
+    """Grouped by currency — e.g. {"USD": {"income":.., "expense":.., "net":..}, "ETB": {...}}."""
     start_of_day = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-    base = db.query(func.sum(models.Transaction.amount)).filter(
+    rows = db.query(models.Transaction).filter(
         models.Transaction.company_id == company.id, models.Transaction.created_at >= start_of_day
-    )
-    income = base.filter(models.Transaction.type == "income").scalar() or 0
-    expense = base.filter(models.Transaction.type == "expense").scalar() or 0
-    return {"income": income, "expense": expense, "net": income - expense}
+    ).all()
+
+    grouped = {}
+    for tx in rows:
+        cur = tx.currency or company.currency or "USD"
+        grouped.setdefault(cur, {"income": 0, "expense": 0})
+        grouped[cur][tx.type] += tx.amount
+
+    return {
+        cur: {"income": v["income"], "expense": v["expense"], "net": v["income"] - v["expense"]}
+        for cur, v in grouped.items()
+    }
 
 
 # ============ INVENTORY ============

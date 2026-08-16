@@ -60,7 +60,7 @@
     <div id="report-error" style="color:#c0392b; font-size:13px; margin-top:10px;"></div>
     <div id="report-summary" style="display:none; margin-top:16px; display:flex; gap:16px; flex-wrap:wrap;"></div>
     <table id="report-table" style="display:none; margin-top:16px;">
-      <thead><tr><th>Date</th><th>Income</th><th>Expense</th><th>Net</th></tr></thead>
+      <thead><tr><th>Date</th><th>Currency</th><th>Income</th><th>Expense</th><th>Net</th></tr></thead>
       <tbody id="report-body"></tbody>
     </table>
 
@@ -135,25 +135,43 @@
     const movementBody = document.getElementById("movement-body");
     const statusEl = document.getElementById("status");
 
-    let todayIncome = 0, todayExpense = 0;
+    let todayTotals = {};   // currency -> {income, expense}
     let inventoryItems = {};    // id -> item data, kept in sync live
     let allTransactions = {};   // id -> transaction data
     let allMovements = {};      // id -> movement data
-    let currency = "USD";       // fetched from /company/me on load
+    let currency = "USD";       // company's default currency, used for inventory/asset values
 
     const dashUser = prompt("Dashboard username:");
     const dashPass = prompt("Dashboard password:");
     const authHeader = "Basic " + btoa(`${dashUser}:${dashPass}`);
 
-    function fmt(amount) {
+    function fmt(amount, cur) {
       const n = (amount || 0).toLocaleString();
-      return `${currency} ${n}`;
+      return `${cur || currency} ${n}`;
+    }
+
+    // Renders a {currency: amount} map as stacked lines in a summary card,
+    // e.g. "USD 100" on one line and "ETB 500" on the next — never added together.
+    function renderCurrencyLines(elId, amountsByCurrency) {
+      const el = document.getElementById(elId);
+      const entries = Object.entries(amountsByCurrency);
+      if (entries.length === 0) {
+        el.textContent = fmt(0);
+        return;
+      }
+      el.innerHTML = entries.map(([cur, amt]) => fmt(amt, cur)).join("<br>");
     }
 
     function updateSummary() {
-      document.getElementById("income-total").textContent = fmt(todayIncome);
-      document.getElementById("expense-total").textContent = fmt(todayExpense);
-      document.getElementById("net-total").textContent = fmt(todayIncome - todayExpense);
+      const incomeByCur = {}, expenseByCur = {}, netByCur = {};
+      Object.entries(todayTotals).forEach(([cur, v]) => {
+        incomeByCur[cur] = v.income;
+        expenseByCur[cur] = v.expense;
+        netByCur[cur] = v.income - v.expense;
+      });
+      renderCurrencyLines("income-total", incomeByCur);
+      renderCurrencyLines("expense-total", expenseByCur);
+      renderCurrencyLines("net-total", netByCur);
 
       const rawMaterials = Object.values(inventoryItems).filter(i => i.category !== "fixed_asset");
       const fixedAssets = Object.values(inventoryItems).filter(i => i.category === "fixed_asset");
@@ -191,7 +209,7 @@
           row.innerHTML = `
             <td>${dateTime}</td><td>${tx.employee_id}</td>
             <td class="type-${tx.type}">${tx.type}</td>
-            <td>${fmt(tx.amount)}</td><td>${tx.category}</td><td>${tx.note || ""}</td>
+            <td>${fmt(tx.amount, tx.currency)}</td><td>${tx.category}</td><td>${tx.note || ""}</td>
             <td>${receiptCell}</td>
             <td>
               <button onclick="editTransaction(${tx.id})" style="cursor:pointer;">Edit</button>
@@ -229,6 +247,9 @@
       const newAmount = prompt("Amount:", tx.amount);
       if (newAmount === null) return;
 
+      const newCurrency = prompt("Currency (USD / ETB / GNF / EUR):", tx.currency || "USD");
+      if (newCurrency === null) return;
+
       const newCategory = prompt("Category:", tx.category);
       if (newCategory === null) return;
 
@@ -240,6 +261,7 @@
         headers: { "Content-Type": "application/json", "Authorization": authHeader },
         body: JSON.stringify({
           type: newType.trim(), amount: parseFloat(newAmount) || 0,
+          currency: newCurrency.trim() || "USD",
           category: newCategory.trim(), note: newNote.trim() || null,
         })
       });
@@ -270,9 +292,7 @@
       const opts = { headers: { "Authorization": authHeader } };
       allTransactions = {};
 
-      const summary = await fetch("/summary/today", opts).then(r => r.json());
-      todayIncome = summary.income;
-      todayExpense = summary.expense;
+      todayTotals = await fetch("/summary/today", opts).then(r => r.json());
       updateSummary();
 
       const transactions = await fetch("/transactions", opts).then(r => r.json());
@@ -497,12 +517,17 @@
       }
 
       const summaryEl = document.getElementById("report-summary");
-      summaryEl.style.display = "flex";
-      summaryEl.innerHTML = `
-        <div class="card income"><div class="label">Income</div><div class="value">${fmt(data.income)}</div></div>
-        <div class="card expense"><div class="label">Expense</div><div class="value">${fmt(data.expense)}</div></div>
-        <div class="card net"><div class="label">Net</div><div class="value">${fmt(data.net)}</div></div>
-      `;
+      const totalEntries = Object.entries(data.totals);
+      if (totalEntries.length === 0) {
+        summaryEl.style.display = "none";
+      } else {
+        summaryEl.style.display = "flex";
+        summaryEl.innerHTML = totalEntries.map(([cur, t]) => `
+          <div class="card income"><div class="label">Income (${cur})</div><div class="value">${fmt(t.income, cur)}</div></div>
+          <div class="card expense"><div class="label">Expense (${cur})</div><div class="value">${fmt(t.expense, cur)}</div></div>
+          <div class="card net"><div class="label">Net (${cur})</div><div class="value">${fmt(t.net, cur)}</div></div>
+        `).join("");
+      }
 
       const tableEl = document.getElementById("report-table");
       const bodyEl = document.getElementById("report-body");
@@ -514,8 +539,8 @@
         data.daily.forEach(day => {
           const row = document.createElement("tr");
           row.innerHTML = `
-            <td>${day.date}</td><td>${fmt(day.income)}</td>
-            <td>${fmt(day.expense)}</td><td>${fmt(day.net)}</td>`;
+            <td>${day.date}</td><td>${day.currency}</td><td>${fmt(day.income, day.currency)}</td>
+            <td>${fmt(day.expense, day.currency)}</td><td>${fmt(day.net, day.currency)}</td>`;
           bodyEl.appendChild(row);
         });
       }
@@ -533,7 +558,7 @@
           row.innerHTML = `
             <td>${dateTime}</td><td>${tx.employee_id}</td>
             <td class="type-${tx.type}">${tx.type}</td>
-            <td>${fmt(tx.amount)}</td><td>${tx.category}</td><td>${tx.note || ""}</td>`;
+            <td>${fmt(tx.amount, tx.currency)}</td><td>${tx.category}</td><td>${tx.note || ""}</td>`;
           detailBodyEl.appendChild(row);
         });
       }
@@ -596,9 +621,7 @@
       currency = company.currency || "USD";
       document.querySelector("h1").textContent = `Live Dashboard — ${company.name}`;
 
-      const summary = await fetch("/summary/today", opts).then(r => r.json());
-      todayIncome = summary.income;
-      todayExpense = summary.expense;
+      todayTotals = await fetch("/summary/today", opts).then(r => r.json());
 
       const transactions = await fetch("/transactions", opts).then(r => r.json());
       transactions.forEach(tx => { allTransactions[tx.id] = tx; });
@@ -629,8 +652,9 @@
 
         if (msg.kind === "transaction") {
           addTxRow(msg, true);
-          if (msg.type === "income") todayIncome += msg.amount;
-          else todayExpense += msg.amount;
+          const cur = msg.currency || currency;
+          todayTotals[cur] = todayTotals[cur] || { income: 0, expense: 0 };
+          todayTotals[cur][msg.type] += msg.amount;
           updateSummary();
         } else if (msg.kind === "stock_movement") {
           addMovementRow(msg);

@@ -14,6 +14,7 @@ class TransactionCreate(BaseModel):
     synced_from_offline: Optional[bool] = False
     receipt_image: Optional[str] = None   # base64-encoded image
     receipt_mime: Optional[str] = None    # e.g. "image/jpeg"
+    currency: Optional[str] = None        # if omitted, falls back to the company's default currency
 
 
 class TransactionOut(BaseModel):
@@ -26,6 +27,7 @@ class TransactionOut(BaseModel):
     created_at: datetime
     synced_from_offline: bool
     receipt_mime: Optional[str] = None   # presence of this tells the dashboard a receipt exists
+    currency: str = "USD"
 
     class Config:
         from_attributes = True
@@ -36,6 +38,7 @@ class TransactionUpdate(BaseModel):
     amount: Optional[float] = None
     category: Optional[str] = None
     note: Optional[str] = None
+    currency: Optional[str] = None
 
 
 class CompanySignup(BaseModel):

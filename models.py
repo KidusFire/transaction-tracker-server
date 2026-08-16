@@ -53,6 +53,7 @@ class Transaction(Base):
     inventory_item_id = Column(Integer, ForeignKey("inventory_items.id"), nullable=True)
     receipt_image = Column(Text, nullable=True)   # base64-encoded image data
     receipt_mime = Column(String, nullable=True)  # e.g. "image/jpeg"
+    currency = Column(String, default="USD")      # per-transaction currency, e.g. "USD", "ETB", "GNF"
 
     company = relationship("Company", back_populates="transactions")
 
