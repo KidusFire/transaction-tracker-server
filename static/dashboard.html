@@ -36,121 +36,266 @@
   </style>
 </head>
 <body>
-  <h1>Live Company Dashboard</h1>
-  <div style="font-size:12px; color:#999; margin-top:-8px; margin-bottom:12px;">Designed &amp; Developed by Tesfaye Alemayehu &nbsp;|&nbsp; +251934442139 &nbsp;|&nbsp; firekidus123@gmail.com</div>
-  <div id="status" class="status">Connecting...</div>
+  <div style="display:flex; justify-content:space-between; align-items:start;">
+    <div>
+      <h1 id="main-heading">Live Company Dashboard</h1>
+      <div style="font-size:12px; color:#999; margin-top:-8px; margin-bottom:12px;">Designed &amp; Developed by Tesfaye Alemayehu &nbsp;|&nbsp; +251934442139 &nbsp;|&nbsp; firekidus123@gmail.com</div>
+    </div>
+    <div style="display:flex; gap:4px; margin-top:4px;">
+      <button class="lang-btn" id="lang-en" onclick="setLang('en')" style="padding:4px 10px; font-size:12px; border:1px solid #ddd; background:white; border-radius:4px; cursor:pointer;">EN</button>
+      <button class="lang-btn" id="lang-fr" onclick="setLang('fr')" style="padding:4px 10px; font-size:12px; border:1px solid #ddd; background:white; border-radius:4px; cursor:pointer;">FR</button>
+      <button class="lang-btn" id="lang-am" onclick="setLang('am')" style="padding:4px 10px; font-size:12px; border:1px solid #ddd; background:white; border-radius:4px; cursor:pointer;">አማ</button>
+      <button class="lang-btn" id="lang-om" onclick="setLang('om')" style="padding:4px 10px; font-size:12px; border:1px solid #ddd; background:white; border-radius:4px; cursor:pointer;">OM</button>
+    </div>
+  </div>
+  <div id="status" class="status" data-i18n="connecting">Connecting...</div>
 
   <div class="summary">
-    <div class="card income"><div class="label">Today's Income</div><div class="value" id="income-total">0</div></div>
-    <div class="card expense"><div class="label">Today's Expenses</div><div class="value" id="expense-total">0</div></div>
-    <div class="card net"><div class="label">Net</div><div class="value" id="net-total">0</div></div>
-    <div class="card lowstock"><div class="label">Low Stock Items</div><div class="value" id="lowstock-total">0</div></div>
-    <div class="card value2"><div class="label">Inventory Value</div><div class="value" id="inventory-value">0</div></div>
-    <div class="card value2"><div class="label">Fixed Asset Book Value</div><div class="value" id="asset-book-value">0</div></div>
+    <div class="card income"><div class="label" data-i18n="todays_income">Today's Income</div><div class="value" id="income-total">0</div></div>
+    <div class="card expense"><div class="label" data-i18n="todays_expenses">Today's Expenses</div><div class="value" id="expense-total">0</div></div>
+    <div class="card net"><div class="label" data-i18n="net">Net</div><div class="value" id="net-total">0</div></div>
+    <div class="card lowstock"><div class="label" data-i18n="low_stock_items">Low Stock Items</div><div class="value" id="lowstock-total">0</div></div>
+    <div class="card value2"><div class="label" data-i18n="inventory_value">Inventory Value</div><div class="value" id="inventory-value">0</div></div>
+    <div class="card value2"><div class="label" data-i18n="fixed_asset_book_value">Fixed Asset Book Value</div><div class="value" id="asset-book-value">0</div></div>
   </div>
 
-  <h2>Reports</h2>
+  <h2 data-i18n="reports">Reports</h2>
   <div style="background:white; border-radius:8px; padding:16px; margin-bottom:20px;">
     <div style="display:flex; gap:8px; align-items:end; flex-wrap:wrap;">
       <div>
-        <label style="display:block; font-size:12px; color:#888;">From</label>
+        <label style="display:block; font-size:12px; color:#888;" data-i18n="from">From</label>
         <input type="date" id="report-start" style="padding:8px; border:1px solid #ddd; border-radius:6px;">
       </div>
       <div>
-        <label style="display:block; font-size:12px; color:#888;">To</label>
+        <label style="display:block; font-size:12px; color:#888;" data-i18n="to">To</label>
         <input type="date" id="report-end" style="padding:8px; border:1px solid #ddd; border-radius:6px;">
       </div>
-      <button onclick="runReport()" style="padding:8px 16px; background:#2c3e50; color:white; border:none; border-radius:6px; cursor:pointer;">Get Report</button>
-      <button onclick="exportReportCSV()" style="padding:8px 16px; background:#2e8b57; color:white; border:none; border-radius:6px; cursor:pointer;">Export to Excel (CSV)</button>
-      <button onclick="window.print()" style="padding:8px 16px; background:#6c3483; color:white; border:none; border-radius:6px; cursor:pointer;">Print / Save as PDF</button>
+      <button onclick="runReport()" style="padding:8px 16px; background:#2c3e50; color:white; border:none; border-radius:6px; cursor:pointer;" data-i18n="get_report">Get Report</button>
+      <button onclick="exportReportCSV()" style="padding:8px 16px; background:#2e8b57; color:white; border:none; border-radius:6px; cursor:pointer;" data-i18n="export_csv">Export to Excel (CSV)</button>
+      <button onclick="window.print()" style="padding:8px 16px; background:#6c3483; color:white; border:none; border-radius:6px; cursor:pointer;" data-i18n="print_pdf">Print / Save as PDF</button>
     </div>
     <div id="report-error" style="color:#c0392b; font-size:13px; margin-top:10px;"></div>
     <div id="report-summary" style="display:none; margin-top:16px; display:flex; gap:16px; flex-wrap:wrap;"></div>
     <table id="report-table" style="display:none; margin-top:16px;">
-      <thead><tr><th>Date</th><th>Currency</th><th>Income</th><th>Expense</th><th>Net</th></tr></thead>
+      <thead><tr><th data-i18n="date">Date</th><th data-i18n="currency">Currency</th><th data-i18n="income">Income</th><th data-i18n="expense">Expense</th><th data-i18n="net">Net</th></tr></thead>
       <tbody id="report-body"></tbody>
     </table>
 
-    <h3 style="margin-top:20px; font-size:15px;">Itemized Transactions</h3>
+    <h3 style="margin-top:20px; font-size:15px;" data-i18n="itemized_transactions">Itemized Transactions</h3>
     <table id="report-detail-table" style="display:none;">
-      <thead><tr><th>Date</th><th>Employee</th><th>Type</th><th>Amount</th><th>Category</th><th>Note / Reason</th></tr></thead>
+      <thead><tr><th data-i18n="date">Date</th><th data-i18n="employee">Employee</th><th data-i18n="type">Type</th><th data-i18n="amount">Amount</th><th data-i18n="category">Category</th><th data-i18n="note_reason">Note / Reason</th></tr></thead>
       <tbody id="report-detail-body"></tbody>
     </table>
   </div>
 
-  <h2>Account Recovery</h2>
+  <h2 data-i18n="account_recovery">Account Recovery</h2>
   <div style="background:white; border-radius:8px; padding:16px; margin-bottom:20px;">
-    <div style="font-size:13px; color:#666; margin-bottom:10px;">
+    <div style="font-size:13px; color:#666; margin-bottom:10px;" data-i18n="recovery_explanation">
       If you ever forget your dashboard password, you'll need a recovery key to get back in.
       Generate one now (or a new one if you've lost the old one) and save it somewhere safe —
       it's shown only once.
     </div>
-    <button onclick="regenerateRecoveryKey()" style="padding:8px 16px; background:#2c3e50; color:white; border:none; border-radius:6px; cursor:pointer;">Generate Recovery Key</button>
+    <button onclick="regenerateRecoveryKey()" style="padding:8px 16px; background:#2c3e50; color:white; border:none; border-radius:6px; cursor:pointer;" data-i18n="generate_recovery_key">Generate Recovery Key</button>
     <div id="recovery-key-result" style="display:none; margin-top:12px; padding:12px; background:#eafaf1; border-radius:6px; font-size:13px;">
-      <strong>Save this now — it won't be shown again:</strong>
+      <strong data-i18n="save_this_now">Save this now — it won't be shown again:</strong>
       <code id="recovery-key-value" style="display:block; background:white; padding:8px; border-radius:4px; margin-top:6px; word-break:break-all;"></code>
     </div>
   </div>
 
-  <h2>Employees</h2>
+  <h2 data-i18n="employees">Employees</h2>
   <div style="background:white; border-radius:8px; padding:16px; margin-bottom:20px;">
     <div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;">
-      <input type="text" id="new-emp-username" placeholder="username" style="flex:1; min-width:120px; padding:8px; border:1px solid #ddd; border-radius:6px;">
-      <input type="password" id="new-emp-password" placeholder="password" style="flex:1; min-width:120px; padding:8px; border:1px solid #ddd; border-radius:6px;">
-      <input type="text" id="new-emp-name" placeholder="full name (optional)" style="flex:1; min-width:120px; padding:8px; border:1px solid #ddd; border-radius:6px;">
-      <button onclick="addEmployee()" style="padding:8px 16px; background:#2c3e50; color:white; border:none; border-radius:6px; cursor:pointer;">Add Employee</button>
+      <input type="text" id="new-emp-username" data-i18n-placeholder="username" placeholder="username" style="flex:1; min-width:120px; padding:8px; border:1px solid #ddd; border-radius:6px;">
+      <input type="password" id="new-emp-password" data-i18n-placeholder="password" placeholder="password" style="flex:1; min-width:120px; padding:8px; border:1px solid #ddd; border-radius:6px;">
+      <input type="text" id="new-emp-name" data-i18n-placeholder="full_name_optional" placeholder="full name (optional)" style="flex:1; min-width:120px; padding:8px; border:1px solid #ddd; border-radius:6px;">
+      <button onclick="addEmployee()" style="padding:8px 16px; background:#2c3e50; color:white; border:none; border-radius:6px; cursor:pointer;" data-i18n="add_employee">Add Employee</button>
     </div>
     <div id="emp-error" style="color:#c0392b; font-size:13px; margin-bottom:10px;"></div>
     <table>
-      <thead><tr><th>Username</th><th>Full Name</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th data-i18n="username">Username</th><th data-i18n="full_name">Full Name</th><th data-i18n="status">Status</th><th></th></tr></thead>
       <tbody id="emp-body"></tbody>
     </table>
   </div>
 
-  <h2>Transactions</h2>
-  <input type="text" id="tx-search" class="search-box" placeholder="Search by employee, category, or note...">
+  <h2 data-i18n="transactions">Transactions</h2>
+  <input type="text" id="tx-search" class="search-box" data-i18n-placeholder="search_tx" placeholder="Search by employee, category, or note...">
   <table>
-    <thead><tr><th>Time</th><th>Employee</th><th>Type</th><th>Amount</th><th>Category</th><th>Note</th><th>Receipt</th><th></th></tr></thead>
+    <thead><tr><th data-i18n="time">Time</th><th data-i18n="employee">Employee</th><th data-i18n="type">Type</th><th data-i18n="amount">Amount</th><th data-i18n="category">Category</th><th data-i18n="note">Note</th><th data-i18n="receipt">Receipt</th><th></th></tr></thead>
     <tbody id="tx-body"></tbody>
   </table>
 
   <div id="receipt-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:1000; align-items:center; justify-content:center;">
     <div style="background:white; padding:16px; border-radius:8px; max-width:90%; max-height:90%; overflow:auto;">
-      <button onclick="closeReceiptModal()" style="float:right; cursor:pointer; background:#c0392b; color:white; border:none; border-radius:4px; padding:4px 10px;">Close</button>
+      <button onclick="closeReceiptModal()" style="float:right; cursor:pointer; background:#c0392b; color:white; border:none; border-radius:4px; padding:4px 10px;" data-i18n="close">Close</button>
       <div style="clear:both;"></div>
       <img id="receipt-modal-img" style="max-width:100%; max-height:80vh; display:block; margin-top:10px;">
     </div>
   </div>
 
-  <h2>Raw Materials Inventory</h2>
-  <input type="text" id="inv-search" class="search-box" placeholder="Search by SKU or name...">
+  <h2 data-i18n="raw_materials_inventory">Raw Materials Inventory</h2>
+  <input type="text" id="inv-search" class="search-box" data-i18n-placeholder="search_sku_name" placeholder="Search by SKU or name...">
   <table>
-    <thead><tr><th>SKU</th><th>Name</th><th>Qty on Hand</th><th>Unit</th><th>Reorder Level</th><th>Unit Cost</th><th>Value</th><th></th></tr></thead>
+    <thead><tr><th data-i18n="sku">SKU</th><th data-i18n="name">Name</th><th data-i18n="qty_on_hand">Qty on Hand</th><th data-i18n="unit">Unit</th><th data-i18n="reorder_level">Reorder Level</th><th data-i18n="unit_cost">Unit Cost</th><th data-i18n="value">Value</th><th></th></tr></thead>
     <tbody id="inv-body"></tbody>
   </table>
 
-  <h2>Fixed Asset Register</h2>
-  <input type="text" id="far-search" class="search-box" placeholder="Search by SKU, name, serial, or location...">
+  <h2 data-i18n="fixed_asset_register">Fixed Asset Register</h2>
+  <input type="text" id="far-search" class="search-box" data-i18n-placeholder="search_far" placeholder="Search by SKU, name, serial, or location...">
   <table>
-    <thead><tr><th>SKU</th><th>Name</th><th>Serial #</th><th>Location</th><th>Condition</th><th>Acquired</th><th>Cost</th><th>Useful Life</th><th>Accum. Depreciation</th><th>Book Value</th><th></th></tr></thead>
+    <thead><tr><th data-i18n="sku">SKU</th><th data-i18n="name">Name</th><th data-i18n="serial_num">Serial #</th><th data-i18n="location">Location</th><th data-i18n="condition">Condition</th><th data-i18n="acquired">Acquired</th><th data-i18n="cost">Cost</th><th data-i18n="useful_life">Useful Life</th><th data-i18n="accum_depreciation">Accum. Depreciation</th><th data-i18n="book_value">Book Value</th><th></th></tr></thead>
     <tbody id="far-body"></tbody>
   </table>
 
-  <h2>Requisitions (Store → Process → Final Product)</h2>
-  <input type="text" id="req-search" class="search-box" placeholder="Search by item, employee, or product reference...">
+  <h2 data-i18n="requisitions_title">Requisitions (Store → Process → Final Product)</h2>
+  <input type="text" id="req-search" class="search-box" data-i18n-placeholder="search_req" placeholder="Search by item, employee, or product reference...">
   <table>
-    <thead><tr><th>Item</th><th>Employee</th><th>Product / Job</th><th>Requested</th><th>Issued</th><th>Consumed</th><th>Returned</th><th>Wastage</th><th>Status</th><th>Opened</th><th>Closed</th><th></th></tr></thead>
+    <thead><tr><th data-i18n="item">Item</th><th data-i18n="employee">Employee</th><th data-i18n="product_job">Product / Job</th><th data-i18n="requested">Requested</th><th data-i18n="issued">Issued</th><th data-i18n="consumed">Consumed</th><th data-i18n="returned">Returned</th><th data-i18n="wastage">Wastage</th><th data-i18n="status">Status</th><th data-i18n="opened">Opened</th><th data-i18n="closed">Closed</th><th></th></tr></thead>
     <tbody id="req-body"></tbody>
   </table>
 
-  <h2>Recent Stock Movements</h2>
-  <input type="text" id="move-search" class="search-box" placeholder="Search by item or employee...">
+  <h2 data-i18n="recent_stock_movements">Recent Stock Movements</h2>
+  <input type="text" id="move-search" class="search-box" data-i18n-placeholder="search_move" placeholder="Search by item or employee...">
   <table>
-    <thead><tr><th>Time</th><th>Item</th><th>Employee</th><th>Direction</th><th>Qty</th><th>New Qty on Hand</th><th>Reason</th></tr></thead>
+    <thead><tr><th data-i18n="time">Time</th><th data-i18n="item">Item</th><th data-i18n="employee">Employee</th><th data-i18n="direction">Direction</th><th data-i18n="qty">Qty</th><th data-i18n="new_qty_on_hand">New Qty on Hand</th><th data-i18n="reason">Reason</th></tr></thead>
     <tbody id="movement-body"></tbody>
   </table>
 
   <script>
+    const dashTranslations = {
+      en: {
+        connecting: "Connecting...", todays_income: "Today's Income", todays_expenses: "Today's Expenses",
+        net: "Net", low_stock_items: "Low Stock Items", inventory_value: "Inventory Value",
+        fixed_asset_book_value: "Fixed Asset Book Value", reports: "Reports", from: "From", to: "To",
+        get_report: "Get Report", export_csv: "Export to Excel (CSV)", print_pdf: "Print / Save as PDF",
+        date: "Date", currency: "Currency", income: "Income", expense: "Expense",
+        itemized_transactions: "Itemized Transactions", employee: "Employee", type: "Type", amount: "Amount",
+        category: "Category", note_reason: "Note / Reason", account_recovery: "Account Recovery",
+        recovery_explanation: "If you ever forget your dashboard password, you'll need a recovery key to get back in. Generate one now (or a new one if you've lost the old one) and save it somewhere safe — it's shown only once.",
+        generate_recovery_key: "Generate Recovery Key", save_this_now: "Save this now — it won't be shown again:",
+        employees: "Employees", username: "Username", password: "password", full_name_optional: "full name (optional)",
+        add_employee: "Add Employee", full_name: "Full Name", status: "Status", transactions: "Transactions",
+        search_tx: "Search by employee, category, or note...", time: "Time", note: "Note", receipt: "Receipt",
+        close: "Close", raw_materials_inventory: "Raw Materials Inventory", search_sku_name: "Search by SKU or name...",
+        sku: "SKU", name: "Name", qty_on_hand: "Qty on Hand", unit: "Unit", reorder_level: "Reorder Level",
+        unit_cost: "Unit Cost", value: "Value", fixed_asset_register: "Fixed Asset Register",
+        search_far: "Search by SKU, name, serial, or location...", serial_num: "Serial #", location: "Location",
+        condition: "Condition", acquired: "Acquired", cost: "Cost", useful_life: "Useful Life",
+        accum_depreciation: "Accum. Depreciation", book_value: "Book Value",
+        requisitions_title: "Requisitions (Store → Process → Final Product)",
+        search_req: "Search by item, employee, or product reference...", item: "Item", product_job: "Product / Job",
+        requested: "Requested", issued: "Issued", consumed: "Consumed", returned: "Returned", wastage: "Wastage",
+        opened: "Opened", closed: "Closed", recent_stock_movements: "Recent Stock Movements",
+        search_move: "Search by item or employee...", direction: "Direction", qty: "Qty",
+        new_qty_on_hand: "New Qty on Hand", reason: "Reason",
+      },
+      fr: {
+        connecting: "Connexion...", todays_income: "Revenus du jour", todays_expenses: "Dépenses du jour",
+        net: "Net", low_stock_items: "Articles en stock faible", inventory_value: "Valeur du stock",
+        fixed_asset_book_value: "Valeur comptable des immobilisations", reports: "Rapports", from: "Du", to: "Au",
+        get_report: "Générer le rapport", export_csv: "Exporter vers Excel (CSV)", print_pdf: "Imprimer / Enregistrer en PDF",
+        date: "Date", currency: "Devise", income: "Revenu", expense: "Dépense",
+        itemized_transactions: "Transactions détaillées", employee: "Employé", type: "Type", amount: "Montant",
+        category: "Catégorie", note_reason: "Note / Motif", account_recovery: "Récupération de compte",
+        recovery_explanation: "Si vous oubliez un jour votre mot de passe, vous aurez besoin d'une clé de récupération pour y accéder de nouveau. Générez-en une maintenant (ou une nouvelle si vous avez perdu l'ancienne) et conservez-la en lieu sûr — elle ne s'affiche qu'une seule fois.",
+        generate_recovery_key: "Générer une clé de récupération", save_this_now: "Enregistrez ceci maintenant — cela ne sera plus affiché :",
+        employees: "Employés", username: "Nom d'utilisateur", password: "mot de passe", full_name_optional: "nom complet (facultatif)",
+        add_employee: "Ajouter un employé", full_name: "Nom complet", status: "Statut", transactions: "Transactions",
+        search_tx: "Rechercher par employé, catégorie ou note...", time: "Heure", note: "Note", receipt: "Reçu",
+        close: "Fermer", raw_materials_inventory: "Stock de matières premières", search_sku_name: "Rechercher par SKU ou nom...",
+        sku: "SKU", name: "Nom", qty_on_hand: "Qté en stock", unit: "Unité", reorder_level: "Seuil de réappro.",
+        unit_cost: "Coût unitaire", value: "Valeur", fixed_asset_register: "Registre des immobilisations",
+        search_far: "Rechercher par SKU, nom, numéro de série ou emplacement...", serial_num: "N° de série", location: "Emplacement",
+        condition: "État", acquired: "Acquis le", cost: "Coût", useful_life: "Durée de vie utile",
+        accum_depreciation: "Amort. cumulé", book_value: "Valeur comptable",
+        requisitions_title: "Réquisitions (Stock → Production → Produit fini)",
+        search_req: "Rechercher par article, employé ou référence produit...", item: "Article", product_job: "Produit / Travail",
+        requested: "Demandé", issued: "Délivré", consumed: "Consommé", returned: "Retourné", wastage: "Perte",
+        opened: "Ouvert le", closed: "Fermé le", recent_stock_movements: "Mouvements de stock récents",
+        search_move: "Rechercher par article ou employé...", direction: "Direction", qty: "Qté",
+        new_qty_on_hand: "Nouvelle qté en stock", reason: "Motif",
+      },
+      am: {
+        connecting: "በመገናኘት ላይ...", todays_income: "የዛሬ ገቢ", todays_expenses: "የዛሬ ወጪ",
+        net: "ተጣራ", low_stock_items: "አነስተኛ ክምችት ያላቸው ዕቃዎች", inventory_value: "የክምችት ዋጋ",
+        fixed_asset_book_value: "የቋሚ ንብረት የመዝገብ ዋጋ", reports: "ሪፖርቶች", from: "ከ", to: "እስከ",
+        get_report: "ሪፖርት አግኝ", export_csv: "ወደ ኤክሴል ላክ (CSV)", print_pdf: "አትም / እንደ PDF አስቀምጥ",
+        date: "ቀን", currency: "ገንዘብ", income: "ገቢ", expense: "ወጪ",
+        itemized_transactions: "ዝርዝር ግብይቶች", employee: "ሰራተኛ", type: "ዓይነት", amount: "መጠን",
+        category: "ምድብ", note_reason: "ማስታወሻ / ምክንያት", account_recovery: "የመለያ ማገገሚያ",
+        recovery_explanation: "የዳሽቦርድ የይለፍ ቃልዎን ቢረሱ፣ ወደ ውስጥ ለመመለስ የማገገሚያ ቁልፍ ያስፈልግዎታል። አሁን አንድ ይፍጠሩ (ወይም የቀድሞውን ካጡ አዲስ) እና በደህና ቦታ ያስቀምጡት — አንድ ጊዜ ብቻ ይታያል።",
+        generate_recovery_key: "የማገገሚያ ቁልፍ ፍጠር", save_this_now: "ይህን አሁን ያስቀምጡ — እንደገና አይታይም:",
+        employees: "ሰራተኞች", username: "የተጠቃሚ ስም", password: "የይለፍ ቃል", full_name_optional: "ሙሉ ስም (አማራጭ)",
+        add_employee: "ሰራተኛ ጨምር", full_name: "ሙሉ ስም", status: "ሁኔታ", transactions: "ግብይቶች",
+        search_tx: "በሰራተኛ፣ ምድብ ወይም ማስታወሻ ይፈልጉ...", time: "ሰዓት", note: "ማስታወሻ", receipt: "ደረሰኝ",
+        close: "ዝጋ", raw_materials_inventory: "የጥሬ ዕቃ ክምችት", search_sku_name: "በ SKU ወይም ስም ይፈልጉ...",
+        sku: "SKU", name: "ስም", qty_on_hand: "ያለ ብዛት", unit: "አሃድ", reorder_level: "የዳግም ትዕዛዝ ደረጃ",
+        unit_cost: "የአሃድ ዋጋ", value: "ዋጋ", fixed_asset_register: "የቋሚ ንብረት መዝገብ",
+        search_far: "በ SKU፣ ስም፣ ተከታታይ ቁጥር ወይም ቦታ ይፈልጉ...", serial_num: "ተከታታይ ቁጥር", location: "ቦታ",
+        condition: "ሁኔታ", acquired: "የተገኘበት ቀን", cost: "ዋጋ", useful_life: "ጠቃሚ ዕድሜ",
+        accum_depreciation: "የተጠራቀመ ዋጋ ቅናሽ", book_value: "የመዝገብ ዋጋ",
+        requisitions_title: "ጥያቄዎች (መደብር → ሂደት → የመጨረሻ ምርት)",
+        search_req: "በዕቃ፣ ሰራተኛ ወይም የምርት ማጣቀሻ ይፈልጉ...", item: "ዕቃ", product_job: "ምርት / ስራ",
+        requested: "የተጠየቀ", issued: "የወጣ", consumed: "የተጠቀመ", returned: "የተመለሰ", wastage: "ብክነት",
+        opened: "የተከፈተበት", closed: "የተዘጋበት", recent_stock_movements: "የቅርብ ጊዜ የክምችት እንቅስቃሴዎች",
+        search_move: "በዕቃ ወይም ሰራተኛ ይፈልጉ...", direction: "አቅጣጫ", qty: "ብዛት",
+        new_qty_on_hand: "አዲስ ያለ ብዛት", reason: "ምክንያት",
+      },
+      om: {
+        connecting: "Walqunnamaa jira...", todays_income: "Galii Har'aa", todays_expenses: "Baasii Har'aa",
+        net: "Net", low_stock_items: "Meeshaalee Kuusaa Xiqqaa", inventory_value: "Gatii Kuusaa",
+        fixed_asset_book_value: "Gatii Galmee Qabeenya Dhaabbataa", reports: "Gabaasota", from: "Irraa", to: "Hanga",
+        get_report: "Gabaasa Argadhu", export_csv: "Excel-tti Ergi (CSV)", print_pdf: "Maxxansi / PDF Taasisii Olkaa'i",
+        date: "Guyyaa", currency: "Maallaqa", income: "Galii", expense: "Baasii",
+        itemized_transactions: "Daldalawwan Bal'inaan", employee: "Hojjataa", type: "Gosa", amount: "Hanga",
+        category: "Ramaddii", note_reason: "Yaadannoo / Sababa", account_recovery: "Deebisanii Argachuu Herregaa",
+        recovery_explanation: "Yeroo kamiyyuu jecha iccitii daashboordii keessan yoo dagattan, furtuu deebi'anii argachuu ni barbaachisa. Amma tokko uumaa (ykn yoo isa duraanii dhabdan haaraa) bakka nagaa tokkotti olkaa'aa — yeroo tokko qofa ni argisiifama.",
+        generate_recovery_key: "Furtuu Deebisanii Argachuu Uumi", save_this_now: "Kana amma olkaa'aa — deebi'ee hin agarsiifamu:",
+        employees: "Hojjattoota", username: "Maqaa Fayyadamaa", password: "jecha iccitii", full_name_optional: "maqaa guutuu (filannoo)",
+        add_employee: "Hojjataa Dabali", full_name: "Maqaa Guutuu", status: "Haala", transactions: "Daldalawwan",
+        search_tx: "Hojjataa, ramaddii, ykn yaadannoo barbaadi...", time: "Yeroo", note: "Yaadannoo", receipt: "Ragaa Kaffaltii",
+        close: "Cufi", raw_materials_inventory: "Kuusaa Meeshaalee Ijaarsaa", search_sku_name: "SKU ykn maqaa barbaadi...",
+        sku: "SKU", name: "Maqaa", qty_on_hand: "Hanga Jiru", unit: "Yuunitii", reorder_level: "Sadarkaa Ajaja Irra Deebii",
+        unit_cost: "Gatii Yuunitii", value: "Gatii", fixed_asset_register: "Galmee Qabeenya Dhaabbataa",
+        search_far: "SKU, maqaa, lakkoofsa sirriyaa, ykn bakka barbaadi...", serial_num: "Lakk. Sirriyaa", location: "Bakka",
+        condition: "Haala", acquired: "Guyyaa Argame", cost: "Gatii", useful_life: "Umrii Faayidaa",
+        accum_depreciation: "Gatii Hir'ate Walitti", book_value: "Gatii Galmee",
+        requisitions_title: "Gaaffilee (Kuusaa → Adeemsa → Oomisha Xumuraa)",
+        search_req: "Meeshaa, hojjataa, ykn wabii oomishaa barbaadi...", item: "Meeshaa", product_job: "Oomisha / Hojii",
+        requested: "Kan Gaafatame", issued: "Kan Kenname", consumed: "Kan Itti Fayyadame", returned: "Kan Deebi'e", wastage: "Balleessaa",
+        opened: "Kan Banameef", closed: "Kan Cufameef", recent_stock_movements: "Sochii Kuusaa Dhiyoo",
+        search_move: "Meeshaa ykn hojjataa barbaadi...", direction: "Kallattii", qty: "Hanga",
+        new_qty_on_hand: "Hanga Haaraa Jiru", reason: "Sababa",
+      }
+    };
+
+    let dashLang = localStorage.getItem("preferred_lang") || "en";
+
+    function applyDashTranslations() {
+      const dict = dashTranslations[dashLang];
+      document.querySelectorAll("[data-i18n]").forEach(el => {
+        const key = el.getAttribute("data-i18n");
+        if (dict[key]) el.textContent = dict[key];
+      });
+      document.querySelectorAll("[data-i18n-placeholder]").forEach(el => {
+        const key = el.getAttribute("data-i18n-placeholder");
+        if (dict[key]) el.placeholder = dict[key];
+      });
+      ["en", "fr", "am", "om"].forEach(l => {
+        const btn = document.getElementById(`lang-${l}`);
+        btn.style.background = dashLang === l ? "#2c3e50" : "white";
+        btn.style.color = dashLang === l ? "white" : "black";
+      });
+      document.documentElement.lang = dashLang;
+    }
+
+    function setLang(lang) {
+      dashLang = lang;
+      localStorage.setItem("preferred_lang", lang);
+      applyDashTranslations();
+    }
+
+    applyDashTranslations();
+
     const txBody = document.getElementById("tx-body");
     const invBody = document.getElementById("inv-body");
     const movementBody = document.getElementById("movement-body");

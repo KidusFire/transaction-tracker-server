@@ -5,14 +5,16 @@
   <title>Sign Up — Company Tracker</title>
   <style>
     body { font-family: Arial, sans-serif; background: #f4f5f7; display: flex; justify-content: center; padding: 40px 20px; }
-    .card { background: white; border-radius: 10px; padding: 32px; max-width: 420px; width: 100%; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
-    h1 { font-size: 20px; margin-top: 0; }
+    .card { background: white; border-radius: 10px; padding: 32px; max-width: 420px; width: 100%; box-shadow: 0 1px 4px rgba(0,0,0,0.1); position: relative; }
+    .lang-toggle { position: absolute; top: 16px; right: 16px; display: flex; gap: 4px; }
+    .lang-btn { padding: 4px 10px; font-size: 12px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer; }
+    .lang-btn.active { background: #2c3e50; color: white; border-color: #2c3e50; }
+    h1 { font-size: 20px; margin-top: 0; padding-right: 90px; }
+    .subtitle { font-size: 12px; color: #999; margin-top: -8px; margin-bottom: 14px; }
     label { display: block; font-size: 13px; color: #555; margin-top: 14px; margin-bottom: 4px; }
     input, select { width: 100%; padding: 8px 10px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
-    button { width: 100%; margin-top: 20px; padding: 10px; background: #2c3e50; color: white; border: none; border-radius: 6px; font-size: 15px; cursor: pointer; }
-    button:hover { background: #34495e; }
-    .plan-option { border: 1px solid #ddd; border-radius: 6px; padding: 10px; margin-top: 8px; cursor: pointer; font-size: 13px; }
-    .plan-option.selected { border-color: #2c3e50; background: #f0f4f8; }
+    button.submit-btn { width: 100%; margin-top: 20px; padding: 10px; background: #2c3e50; color: white; border: none; border-radius: 6px; font-size: 15px; cursor: pointer; }
+    button.submit-btn:hover { background: #34495e; }
     #result { display: none; margin-top: 20px; padding: 16px; background: #eafaf1; border-radius: 6px; font-size: 13px; }
     #result code { display: block; background: white; padding: 8px; border-radius: 4px; margin-top: 6px; word-break: break-all; }
     .error { color: #c0392b; font-size: 13px; margin-top: 10px; }
@@ -20,27 +22,35 @@
 </head>
 <body>
   <div class="card">
-    <h1>Create your company account</h1>
-    <div style="font-size:12px; color:#999; margin-top:-8px; margin-bottom:14px;">Designed &amp; Developed by Tesfaye Alemayehu &nbsp;|&nbsp; +251934442139 &nbsp;|&nbsp; firekidus123@gmail.com</div>
+    <div class="lang-toggle">
+      <button class="lang-btn" id="lang-en" onclick="setLang('en')">EN</button>
+      <button class="lang-btn" id="lang-fr" onclick="setLang('fr')">FR</button>
+      <button class="lang-btn" id="lang-am" onclick="setLang('am')">አማ</button>
+      <button class="lang-btn" id="lang-om" onclick="setLang('om')">OM</button>
+    </div>
+
+    <h1 data-i18n="title">Create your company account</h1>
+    <div class="subtitle" data-i18n="subtitle">Designed &amp; Developed by Tesfaye Alemayehu | +251934442139 | firekidus123@gmail.com</div>
+
     <form id="signup-form">
-      <label>Company name</label>
+      <label data-i18n="company_name_label">Company name</label>
       <input type="text" id="company_name" required>
 
-      <label>Dashboard login username</label>
+      <label data-i18n="username_label">Dashboard login username</label>
       <input type="text" id="dashboard_username" required>
 
-      <label>Dashboard login password</label>
+      <label data-i18n="password_label">Dashboard login password</label>
       <input type="password" id="dashboard_password" required>
 
-      <label>Plan</label>
+      <label data-i18n="plan_label">Plan</label>
       <select id="plan">
-        <option value="free">Free — up to 3 employees</option>
-        <option value="starter">Starter — up to 10 employees</option>
-        <option value="growth">Growth — up to 25 employees</option>
-        <option value="enterprise">Enterprise — unlimited employees</option>
+        <option value="free" data-i18n="plan_free">Free — up to 3 employees</option>
+        <option value="starter" data-i18n="plan_starter">Starter — up to 10 employees</option>
+        <option value="growth" data-i18n="plan_growth">Growth — up to 25 employees</option>
+        <option value="enterprise" data-i18n="plan_enterprise">Enterprise — unlimited employees</option>
       </select>
 
-      <label>Currency</label>
+      <label data-i18n="currency_label">Currency</label>
       <select id="currency">
         <option value="USD">USD — US Dollar</option>
         <option value="ETB">ETB — Ethiopian Birr</option>
@@ -48,21 +58,131 @@
         <option value="EUR">EUR — Euro</option>
       </select>
 
-      <button type="submit">Create Account</button>
+      <button type="submit" class="submit-btn" data-i18n="submit_btn">Create Account</button>
       <div id="error" class="error"></div>
     </form>
 
     <div id="result">
-      <strong>Account created!</strong>
-      <div>Save your API key now — you'll need it to set up each employee's app, and it won't be shown again:</div>
+      <strong data-i18n="result_title">Account created!</strong>
+      <div data-i18n="result_api_key_note">Save your API key now — you'll need it to set up each employee's app, and it won't be shown again:</div>
       <code id="api-key-display"></code>
-      <div style="margin-top:14px;">Also save your <strong>recovery key</strong> — if you ever forget your dashboard password, this is the only way back in. Store it somewhere safe and separate from your password:</div>
+      <div style="margin-top:14px;" data-i18n="result_recovery_note">Also save your recovery key — if you ever forget your dashboard password, this is the only way back in. Store it somewhere safe and separate from your password:</div>
       <code id="recovery-key-display"></code>
-      <div style="margin-top:10px;">Your dashboard: <a id="dashboard-link" href="#">Open Dashboard</a></div>
+      <div style="margin-top:10px;"><span data-i18n="result_dashboard_label">Your dashboard:</span> <a id="dashboard-link" href="#" data-i18n="result_dashboard_link">Open Dashboard</a></div>
     </div>
   </div>
 
   <script>
+    const translations = {
+      en: {
+        title: "Create your company account",
+        subtitle: "Designed & Developed by Tesfaye Alemayehu | +251934442139 | firekidus123@gmail.com",
+        company_name_label: "Company name",
+        username_label: "Dashboard login username",
+        password_label: "Dashboard login password",
+        plan_label: "Plan",
+        plan_free: "Free — up to 3 employees",
+        plan_starter: "Starter — up to 10 employees",
+        plan_growth: "Growth — up to 25 employees",
+        plan_enterprise: "Enterprise — unlimited employees",
+        currency_label: "Currency",
+        submit_btn: "Create Account",
+        result_title: "Account created!",
+        result_api_key_note: "Save your API key now — you'll need it to set up each employee's app, and it won't be shown again:",
+        result_recovery_note: "Also save your recovery key — if you ever forget your dashboard password, this is the only way back in. Store it somewhere safe and separate from your password:",
+        result_dashboard_label: "Your dashboard:",
+        result_dashboard_link: "Open Dashboard",
+        err_generic: "Signup failed.",
+        err_network: "Could not reach the server. Try again.",
+      },
+      fr: {
+        title: "Créez le compte de votre entreprise",
+        subtitle: "Conçu et développé par Tesfaye Alemayehu | +251934442139 | firekidus123@gmail.com",
+        company_name_label: "Nom de l'entreprise",
+        username_label: "Identifiant du tableau de bord",
+        password_label: "Mot de passe du tableau de bord",
+        plan_label: "Formule",
+        plan_free: "Gratuit — jusqu'à 3 employés",
+        plan_starter: "Starter — jusqu'à 10 employés",
+        plan_growth: "Growth — jusqu'à 25 employés",
+        plan_enterprise: "Enterprise — employés illimités",
+        currency_label: "Devise",
+        submit_btn: "Créer le compte",
+        result_title: "Compte créé !",
+        result_api_key_note: "Enregistrez votre clé API maintenant — vous en aurez besoin pour configurer l'application de chaque employé, et elle ne sera plus affichée par la suite :",
+        result_recovery_note: "Enregistrez aussi votre clé de récupération — si vous oubliez un jour votre mot de passe, c'est le seul moyen de le récupérer. Conservez-la en lieu sûr, séparément de votre mot de passe :",
+        result_dashboard_label: "Votre tableau de bord :",
+        result_dashboard_link: "Ouvrir le tableau de bord",
+        err_generic: "Échec de l'inscription.",
+        err_network: "Impossible de contacter le serveur. Réessayez.",
+      },
+      am: {
+        title: "የድርጅትዎን መለያ ይፍጠሩ",
+        subtitle: "የተነደፈው እና የተሰራው በተስፋዬ አለማየሁ | +251934442139 | firekidus123@gmail.com",
+        company_name_label: "የድርጅት ስም",
+        username_label: "የዳሽቦርድ መግቢያ የተጠቃሚ ስም",
+        password_label: "የዳሽቦርድ መግቢያ የይለፍ ቃል",
+        plan_label: "ዕቅድ",
+        plan_free: "ነፃ — እስከ 3 ሰራተኞች",
+        plan_starter: "ጀማሪ — እስከ 10 ሰራተኞች",
+        plan_growth: "እድገት — እስከ 25 ሰራተኞች",
+        plan_enterprise: "ኢንተርፕራይዝ — ያልተገደበ ሰራተኞች",
+        currency_label: "ገንዘብ",
+        submit_btn: "መለያ ፍጠር",
+        result_title: "መለያ ተፈጥሯል!",
+        result_api_key_note: "የ API ቁልፍዎን አሁን ያስቀምጡ — የእያንዳንዱን ሰራተኛ መተግበሪያ ለማዘጋጀት ያስፈልግዎታል፣ እንደገናም አይታይም:",
+        result_recovery_note: "የማገገሚያ ቁልፍዎንም ያስቀምጡ — የይለፍ ቃልዎን ቢረሱ፣ ወደ ውስጥ ለመመለስ ብቸኛው መንገድ ይህ ነው። ከይለፍ ቃልዎ ተለይቶ በደህና ቦታ ያስቀምጡት:",
+        result_dashboard_label: "የእርስዎ ዳሽቦርድ:",
+        result_dashboard_link: "ዳሽቦርድ ክፈት",
+        err_generic: "ምዝገባ አልተሳካም።",
+        err_network: "አገልጋዩን ማግኘት አልተቻለም። እንደገና ይሞክሩ።",
+      },
+      om: {
+        title: "Herrega dhaabbata keessanii uumaa",
+        subtitle: "Kan qopheesse fi hojjete Tesfaye Alemayehu | +251934442139 | firekidus123@gmail.com",
+        company_name_label: "Maqaa dhaabbataa",
+        username_label: "Maqaa fayyadamaa daashboordii",
+        password_label: "Jecha iccitii daashboordii",
+        plan_label: "Karoora",
+        plan_free: "Bilisaa — hanga hojjattoota 3",
+        plan_starter: "Jalqabaa — hanga hojjattoota 10",
+        plan_growth: "Guddina — hanga hojjattoota 25",
+        plan_enterprise: "Enterprise — hojjattoota daangaa hin qabne",
+        currency_label: "Maallaqa",
+        submit_btn: "Herrega Uumi",
+        result_title: "Herregni uumameera!",
+        result_api_key_note: "Furtuu API keessan amma olkaa'aa — appii hojjataa tokkoo tokkoon ijaaruuf isin barbaachisa, deebi'ee hin agarsiifamu:",
+        result_recovery_note: "Furtuu deebisanii argachuu keessanis olkaa'aa — yeroo kamiyyuu jecha iccitii keessan yoo dagattan, kun karaa qofa deebi'anii itti seenuu dandeessan. Jecha iccitii keessanii irraa adda baasee bakka nagaa tokkotti olkaa'aa:",
+        result_dashboard_label: "Daashboordii keessan:",
+        result_dashboard_link: "Daashboordii Bani",
+        err_generic: "Galmeessuun hin milkoofne.",
+        err_network: "Sarvarii bira ga'uu hin dandeenye. Irra deebi'aa yaalaa.",
+      }
+    };
+
+    let currentLang = localStorage.getItem("preferred_lang") || "en";
+
+    function applyTranslations() {
+      const dict = translations[currentLang];
+      document.querySelectorAll("[data-i18n]").forEach(el => {
+        const key = el.getAttribute("data-i18n");
+        if (dict[key]) el.textContent = dict[key];
+      });
+      document.getElementById("lang-en").classList.toggle("active", currentLang === "en");
+      document.getElementById("lang-fr").classList.toggle("active", currentLang === "fr");
+      document.getElementById("lang-am").classList.toggle("active", currentLang === "am");
+      document.getElementById("lang-om").classList.toggle("active", currentLang === "om");
+      document.documentElement.lang = currentLang;
+    }
+
+    function setLang(lang) {
+      currentLang = lang;
+      localStorage.setItem("preferred_lang", lang);
+      applyTranslations();
+    }
+
+    applyTranslations();
+
     document.getElementById("signup-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       const errorEl = document.getElementById("error");
@@ -85,7 +205,7 @@
         const data = await res.json();
 
         if (!res.ok) {
-          errorEl.textContent = data.detail || "Signup failed.";
+          errorEl.textContent = data.detail || translations[currentLang].err_generic;
           return;
         }
 
@@ -95,7 +215,7 @@
         document.getElementById("recovery-key-display").textContent = data.recovery_key;
         document.getElementById("dashboard-link").href = "/dashboard";
       } catch (err) {
-        errorEl.textContent = "Could not reach the server. Try again.";
+        errorEl.textContent = translations[currentLang].err_network;
       }
     });
   </script>
