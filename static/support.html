@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Support — Company Tracker</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f5f7; display: flex; justify-content: center; padding: 40px 20px; }
+    .card { background: white; border-radius: 10px; padding: 32px; max-width: 480px; width: 100%; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+    h1 { font-size: 22px; margin-top: 0; }
+    .contact-row { display: flex; align-items: center; gap: 10px; margin: 16px 0; font-size: 15px; }
+    .contact-row a { color: #2c3e50; }
+    label { display: block; font-size: 13px; color: #555; margin-top: 14px; margin-bottom: 4px; }
+    input, textarea { width: 100%; padding: 8px 10px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; font-family: inherit; }
+    textarea { min-height: 100px; resize: vertical; }
+    button { width: 100%; margin-top: 20px; padding: 10px; background: #2c3e50; color: white; border: none; border-radius: 6px; font-size: 15px; cursor: pointer; }
+    button:hover { background: #34495e; }
+    .divider { text-align: center; color: #aaa; font-size: 13px; margin: 24px 0; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Need help?</h1>
+
+    <div class="contact-row">📧 <a href="mailto:firekidus123@gmail.com">firekidus123@gmail.com</a></div>
+    <div class="contact-row">📱 <a href="tel:+251934442139">+251934442139</a></div>
+
+    <div class="divider">— or send a message directly —</div>
+
+    <form id="support-form">
+      <label>Your name</label>
+      <input type="text" id="name" required>
+
+      <label>Your email</label>
+      <input type="email" id="email" required>
+
+      <label>Company name (if you have an account)</label>
+      <input type="text" id="company">
+
+      <label>What's the issue?</label>
+      <textarea id="message" required></textarea>
+
+      <button type="submit">Open in Email App</button>
+    </form>
+  </div>
+
+  <script>
+    document.getElementById("support-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const name = document.getElementById("name").value;
+      const email = document.getElementById("email").value;
+      const company = document.getElementById("company").value;
+      const message = document.getElementById("message").value;
+
+      const subject = encodeURIComponent(`Company Tracker Support — ${name}`);
+      const body = encodeURIComponent(
+        `Name: ${name}\nEmail: ${email}\nCompany: ${company || "(not provided)"}\n\nMessage:\n${message}`
+      );
+
+      window.location.href = `mailto:firekidus123@gmail.com?subject=${subject}&body=${body}`;
+    });
+  </script>
+</body>
+</html>

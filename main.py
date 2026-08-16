@@ -87,6 +87,30 @@ def dashboard(company: models.Company = Depends(auth.get_company_from_dashboard_
         return f.read()
 
 
+@app.get("/", response_class=HTMLResponse)
+def landing_page():
+    with open("static/index.html", encoding="utf-8") as f:
+        return f.read()
+
+
+@app.get("/terms", response_class=HTMLResponse)
+def terms_page():
+    with open("static/terms.html", encoding="utf-8") as f:
+        return f.read()
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+def privacy_page():
+    with open("static/privacy.html", encoding="utf-8") as f:
+        return f.read()
+
+
+@app.get("/support", response_class=HTMLResponse)
+def support_page():
+    with open("static/support.html", encoding="utf-8") as f:
+        return f.read()
+
+
 @app.get("/signup", response_class=HTMLResponse)
 def signup_page():
     with open("static/signup.html", encoding="utf-8") as f:

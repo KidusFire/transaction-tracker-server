@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Company Tracker — Real-Time Transactions & Inventory for African Businesses</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; margin: 0; color: #2c3e50; }
+    .lang-toggle { position: fixed; top: 16px; right: 16px; display: flex; gap: 4px; z-index: 10; }
+    .lang-btn { padding: 5px 12px; font-size: 12px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer; }
+    .lang-btn.active { background: #2c3e50; color: white; border-color: #2c3e50; }
+
+    .hero { background: linear-gradient(135deg, #2c3e50, #34495e); color: white; padding: 80px 20px 100px; text-align: center; }
+    .hero h1 { font-size: 36px; margin-bottom: 16px; max-width: 700px; margin-left: auto; margin-right: auto; }
+    .hero p { font-size: 18px; color: #dfe6e9; max-width: 560px; margin: 0 auto 32px; }
+    .cta-row { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+    .btn-primary { background: #2e8b57; color: white; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-size: 16px; font-weight: bold; }
+    .btn-secondary { background: transparent; color: white; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-size: 16px; border: 2px solid white; }
+
+    .section { max-width: 1000px; margin: 0 auto; padding: 60px 20px; }
+    .section h2 { text-align: center; font-size: 28px; margin-bottom: 40px; }
+    .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; }
+    .feature { background: #f8f9fa; border-radius: 10px; padding: 24px; }
+    .feature .icon { font-size: 32px; margin-bottom: 12px; }
+    .feature h3 { margin-top: 0; font-size: 17px; }
+    .feature p { color: #666; font-size: 14px; line-height: 1.5; }
+
+    .languages-band { background: #eafaf1; text-align: center; padding: 30px 20px; font-size: 15px; color: #2c3e50; }
+
+    .pricing { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
+    .plan { border: 2px solid #eee; border-radius: 10px; padding: 24px; text-align: center; }
+    .plan.featured { border-color: #2e8b57; }
+    .plan h3 { margin-top: 0; }
+    .plan .price { font-size: 24px; font-weight: bold; margin: 12px 0; color: #2c3e50; }
+    .plan ul { list-style: none; padding: 0; font-size: 14px; color: #666; text-align: left; }
+    .plan li { padding: 4px 0; }
+
+    footer { background: #2c3e50; color: #bdc3c7; text-align: center; padding: 30px 20px; font-size: 13px; }
+    footer a { color: #eafaf1; }
+  </style>
+</head>
+<body>
+  <div class="lang-toggle">
+    <button class="lang-btn" id="lang-en" onclick="setLang('en')">EN</button>
+    <button class="lang-btn" id="lang-fr" onclick="setLang('fr')">FR</button>
+    <button class="lang-btn" id="lang-am" onclick="setLang('am')">አማ</button>
+    <button class="lang-btn" id="lang-om" onclick="setLang('om')">OM</button>
+  </div>
+
+  <div class="hero">
+    <h1 data-i18n="hero_title">Real-time transactions and inventory, built for businesses across Africa</h1>
+    <p data-i18n="hero_sub">Track income, expenses, raw materials, and fixed assets live — with offline support, multi-currency, and multi-language, from one dashboard.</p>
+    <div class="cta-row">
+      <a href="/signup" class="btn-primary" data-i18n="cta_start">Get Started Free</a>
+      <a href="#features" class="btn-secondary" data-i18n="cta_learn">Learn More</a>
+    </div>
+  </div>
+
+  <div class="languages-band" data-i18n="languages_band">Available in English, French, Amharic, and Oromifa</div>
+
+  <div class="section" id="features">
+    <h2 data-i18n="features_title">Everything your business needs to stay on top of its numbers</h2>
+    <div class="features">
+      <div class="feature">
+        <div class="icon">💰</div>
+        <h3 data-i18n="f1_title">Live Transactions</h3>
+        <p data-i18n="f1_desc">Log income and expenses instantly, with photo receipts attached — synced across your whole team in real time.</p>
+      </div>
+      <div class="feature">
+        <div class="icon">📡</div>
+        <h3 data-i18n="f2_title">Works Offline</h3>
+        <p data-i18n="f2_desc">No internet? Entries still save and sync automatically the moment your connection returns — nothing is ever lost.</p>
+      </div>
+      <div class="feature">
+        <div class="icon">📦</div>
+        <h3 data-i18n="f3_title">Raw Material Tracking</h3>
+        <p data-i18n="f3_desc">Follow material from the store to production to the final product, with automatic wastage calculation.</p>
+      </div>
+      <div class="feature">
+        <div class="icon">🏭</div>
+        <h3 data-i18n="f4_title">Fixed Asset Register</h3>
+        <p data-i18n="f4_desc">Track equipment with serial numbers, locations, and automatic depreciation over time.</p>
+      </div>
+      <div class="feature">
+        <div class="icon">🌍</div>
+        <h3 data-i18n="f5_title">Multi-Currency</h3>
+        <p data-i18n="f5_desc">Log transactions in USD, ETB, GNF, or EUR — each kept honest and separate, never wrongly combined.</p>
+      </div>
+      <div class="feature">
+        <div class="icon">👥</div>
+        <h3 data-i18n="f6_title">Per-Employee Accounts</h3>
+        <p data-i18n="f6_desc">Every team member gets their own login — you always know exactly who logged what.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section" style="background:#f8f9fa; border-radius: 16px;">
+    <h2 data-i18n="pricing_title">Simple, honest pricing</h2>
+    <div class="pricing">
+      <div class="plan">
+        <h3 data-i18n="plan_free_name">Free</h3>
+        <div class="price">$0</div>
+        <ul>
+          <li data-i18n="plan_free_1">Up to 3 employees</li>
+          <li data-i18n="plan_common_2">Unlimited transactions</li>
+          <li data-i18n="plan_common_3">Inventory & requisitions</li>
+        </ul>
+      </div>
+      <div class="plan featured">
+        <h3 data-i18n="plan_starter_name">Starter</h3>
+        <div class="price" data-i18n="plan_contact">Contact us</div>
+        <ul>
+          <li data-i18n="plan_starter_1">Up to 10 employees</li>
+          <li data-i18n="plan_common_2">Unlimited transactions</li>
+          <li data-i18n="plan_common_3">Inventory & requisitions</li>
+        </ul>
+      </div>
+      <div class="plan">
+        <h3 data-i18n="plan_growth_name">Growth</h3>
+        <div class="price" data-i18n="plan_contact">Contact us</div>
+        <ul>
+          <li data-i18n="plan_growth_1">Up to 25 employees</li>
+          <li data-i18n="plan_common_2">Unlimited transactions</li>
+          <li data-i18n="plan_common_3">Inventory & requisitions</li>
+        </ul>
+      </div>
+      <div class="plan">
+        <h3 data-i18n="plan_enterprise_name">Enterprise</h3>
+        <div class="price" data-i18n="plan_contact">Contact us</div>
+        <ul>
+          <li data-i18n="plan_enterprise_1">Unlimited employees</li>
+          <li data-i18n="plan_common_2">Unlimited transactions</li>
+          <li data-i18n="plan_common_3">Inventory & requisitions</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="section" style="text-align:center;">
+    <h2 data-i18n="ready_title">Ready to get started?</h2>
+    <a href="/signup" class="btn-primary" style="background:#2e8b57; padding:16px 36px;" data-i18n="cta_start2">Create Your Free Account</a>
+  </div>
+
+  <footer>
+    <div>Designed &amp; Developed by Tesfaye Alemayehu &nbsp;|&nbsp; +251934442139 &nbsp;|&nbsp; firekidus123@gmail.com</div>
+    <div style="margin-top:10px;">
+      <a href="/terms" data-i18n="footer_terms">Terms of Service</a> &nbsp;·&nbsp;
+      <a href="/privacy" data-i18n="footer_privacy">Privacy Policy</a> &nbsp;·&nbsp;
+      <a href="/support" data-i18n="footer_support">Support</a>
+    </div>
+  </footer>
+
+  <script>
+    const t = {
+      en: {
+        hero_title: "Real-time transactions and inventory, built for businesses across Africa",
+        hero_sub: "Track income, expenses, raw materials, and fixed assets live — with offline support, multi-currency, and multi-language, from one dashboard.",
+        cta_start: "Get Started Free", cta_learn: "Learn More", cta_start2: "Create Your Free Account",
+        languages_band: "Available in English, French, Amharic, and Oromifa",
+        features_title: "Everything your business needs to stay on top of its numbers",
+        f1_title: "Live Transactions", f1_desc: "Log income and expenses instantly, with photo receipts attached — synced across your whole team in real time.",
+        f2_title: "Works Offline", f2_desc: "No internet? Entries still save and sync automatically the moment your connection returns — nothing is ever lost.",
+        f3_title: "Raw Material Tracking", f3_desc: "Follow material from the store to production to the final product, with automatic wastage calculation.",
+        f4_title: "Fixed Asset Register", f4_desc: "Track equipment with serial numbers, locations, and automatic depreciation over time.",
+        f5_title: "Multi-Currency", f5_desc: "Log transactions in USD, ETB, GNF, or EUR — each kept honest and separate, never wrongly combined.",
+        f6_title: "Per-Employee Accounts", f6_desc: "Every team member gets their own login — you always know exactly who logged what.",
+        pricing_title: "Simple, honest pricing",
+        plan_free_name: "Free", plan_starter_name: "Starter", plan_growth_name: "Growth", plan_enterprise_name: "Enterprise",
+        plan_free_1: "Up to 3 employees", plan_starter_1: "Up to 10 employees", plan_growth_1: "Up to 25 employees", plan_enterprise_1: "Unlimited employees",
+        plan_common_2: "Unlimited transactions", plan_common_3: "Inventory & requisitions", plan_contact: "Contact us",
+        ready_title: "Ready to get started?",
+        footer_terms: "Terms of Service", footer_privacy: "Privacy Policy", footer_support: "Support",
+      },
+      fr: {
+        hero_title: "Transactions et stocks en temps réel, conçus pour les entreprises africaines",
+        hero_sub: "Suivez vos revenus, dépenses, matières premières et immobilisations en direct — avec fonctionnement hors ligne, multidevise et multilingue, depuis un seul tableau de bord.",
+        cta_start: "Commencer gratuitement", cta_learn: "En savoir plus", cta_start2: "Créer votre compte gratuit",
+        languages_band: "Disponible en anglais, français, amharique et oromo",
+        features_title: "Tout ce dont votre entreprise a besoin pour maîtriser ses chiffres",
+        f1_title: "Transactions en direct", f1_desc: "Enregistrez revenus et dépenses instantanément, reçus photo à l'appui — synchronisés avec toute votre équipe en temps réel.",
+        f2_title: "Fonctionne hors ligne", f2_desc: "Pas d'internet ? Les entrées se sauvegardent et se synchronisent automatiquement dès le retour de la connexion — rien n'est jamais perdu.",
+        f3_title: "Suivi des matières premières", f3_desc: "Suivez la matière du magasin à la production jusqu'au produit fini, avec calcul automatique des pertes.",
+        f4_title: "Registre des immobilisations", f4_desc: "Suivez vos équipements avec numéros de série, emplacements et amortissement automatique.",
+        f5_title: "Multidevise", f5_desc: "Enregistrez en USD, ETB, GNF ou EUR — chaque devise reste distincte et honnête, jamais mélangée à tort.",
+        f6_title: "Comptes par employé", f6_desc: "Chaque membre de l'équipe a son propre identifiant — vous savez toujours qui a saisi quoi.",
+        pricing_title: "Des tarifs simples et honnêtes",
+        plan_free_name: "Gratuit", plan_starter_name: "Starter", plan_growth_name: "Growth", plan_enterprise_name: "Enterprise",
+        plan_free_1: "Jusqu'à 3 employés", plan_starter_1: "Jusqu'à 10 employés", plan_growth_1: "Jusqu'à 25 employés", plan_enterprise_1: "Employés illimités",
+        plan_common_2: "Transactions illimitées", plan_common_3: "Stock et réquisitions", plan_contact: "Nous contacter",
+        ready_title: "Prêt à commencer ?",
+        footer_terms: "Conditions d'utilisation", footer_privacy: "Politique de confidentialité", footer_support: "Assistance",
+      },
+      am: {
+        hero_title: "ለአፍሪካ ንግዶች የተዘጋጀ የቅጽበት ግብይቶች እና ክምችት",
+        hero_sub: "ገቢ፣ ወጪ፣ ጥሬ ዕቃዎች እና ቋሚ ንብረቶችን በቀጥታ ይከታተሉ — ከበይነመረብ ውጪ የመስራት ችሎታ፣ ብዙ ገንዘቦች እና ብዙ ቋንቋዎች ያሉት፣ ከአንድ ዳሽቦርድ።",
+        cta_start: "በነፃ ይጀምሩ", cta_learn: "ተጨማሪ ይወቁ", cta_start2: "ነፃ መለያዎን ይፍጠሩ",
+        languages_band: "በእንግሊዝኛ፣ ፈረንሳይኛ፣ አማርኛ እና ኦሮሚኛ ይገኛል",
+        features_title: "ንግድዎ ቁጥሮቹን ለመቆጣጠር የሚያስፈልገው ሁሉ",
+        f1_title: "የቀጥታ ግብይቶች", f1_desc: "ገቢና ወጪን በቅጽበት ይመዝግቡ፣ የደረሰኝ ፎቶ ጋር — ከመላው ቡድንዎ ጋር በቀጥታ ይመሳሰላል።",
+        f2_title: "ከበይነመረብ ውጪ ይሰራል", f2_desc: "በይነመረብ የለም? ግቤቶች አሁንም ይቀመጣሉ እና ግንኙነት ሲመለስ በራስ-ሰር ይመሳሰላሉ — ምንም አይጠፋም።",
+        f3_title: "የጥሬ ዕቃ ክትትል", f3_desc: "ዕቃውን ከመደብር ወደ ምርት ሂደት እስከ መጨረሻ ምርት ድረስ ይከታተሉ፣ በራስ-ሰር የብክነት ስሌት ጋር።",
+        f4_title: "የቋሚ ንብረት መዝገብ", f4_desc: "መሳሪያዎችን በተከታታይ ቁጥሮች፣ ቦታዎች እና በራስ-ሰር የዋጋ ቅናሽ ይከታተሉ።",
+        f5_title: "ብዙ ገንዘቦች", f5_desc: "በUSD፣ ETB፣ GNF ወይም EUR ይመዝግቡ — እያንዳንዱ ገንዘብ ተለይቶ በትክክል ይያዛል፣ ፈጽሞ በስህተት አይቀላቀልም።",
+        f6_title: "በሰራተኛ የተመሰረቱ መለያዎች", f6_desc: "እያንዳንዱ የቡድን አባል የራሱ መግቢያ አለው — ማን ምን እንደመዘገበ ሁልጊዜ ያውቃሉ።",
+        pricing_title: "ቀላል እና ታማኝ ዋጋዎች",
+        plan_free_name: "ነፃ", plan_starter_name: "ጀማሪ", plan_growth_name: "እድገት", plan_enterprise_name: "ኢንተርፕራይዝ",
+        plan_free_1: "እስከ 3 ሰራተኞች", plan_starter_1: "እስከ 10 ሰራተኞች", plan_growth_1: "እስከ 25 ሰራተኞች", plan_enterprise_1: "ያልተገደበ ሰራተኞች",
+        plan_common_2: "ያልተገደበ ግብይቶች", plan_common_3: "ክምችት እና ጥያቄዎች", plan_contact: "ያግኙን",
+        ready_title: "ለመጀመር ዝግጁ ነዎት?",
+        footer_terms: "የአገልግሎት ውሎች", footer_privacy: "የግላዊነት ፖሊሲ", footer_support: "ድጋፍ",
+      },
+      om: {
+        hero_title: "Daldalawwan fi kuusaa yeroo dhugaa, dhaabbilee Afrikaa hunda hunda keessatti ijaarame",
+        hero_sub: "Galii, baasii, meeshaalee ijaarsaa fi qabeenya dhaabbataa yeroo dhugaatti hordofaa — deeggarsa offline, maallaqa hedduu, fi afaan hedduu waliin, daashboordii tokko irraa.",
+        cta_start: "Bilisaan Jalqabi", cta_learn: "Dabalata Baradhu", cta_start2: "Herrega Bilisaa Uumi",
+        languages_band: "Afaan Ingilizii, Faransaayii, Amaaraa fi Afaan Oromootiin ni argama",
+        features_title: "Wanti dhaabbanni keessan lakkoofsa isaanii too'achuuf barbaadan hundi",
+        f1_title: "Daldalawwan Yeroo Dhugaa", f1_desc: "Galii fi baasii yeroo dhugaatti galmeessaa, ragaa suuraa waliin — garee keessan guutuu waliin yeroo dhugaatti walsimsiisama.",
+        f2_title: "Offline Ni Hojjeta", f2_desc: "Interneetii hin qabdu? Galmeewwan ammas ni olkaa'amu, yeroo interneetiin deebi'us ofumaan walsimsiisama — wanti tokkoyyuu hin badu.",
+        f3_title: "Hordoffii Meeshaalee Ijaarsaa", f3_desc: "Meeshaa kuusaa irraa hanga oomishaatti, hanga oomisha xumuraatti hordofaa, herrega balleessaa ofumaan waliin.",
+        f4_title: "Galmee Qabeenya Dhaabbataa", f4_desc: "Meeshaalee lakkoofsa sirriyaa, bakka, fi hir'ina gatii ofumaan waliin hordofaa.",
+        f5_title: "Maallaqa Hedduu", f5_desc: "USD, ETB, GNF, ykn EUR-tiin galmeessaa — maallaqni hundinuu adda ta'ee dhugaan ni qabama, gonkumaa walitti hin makamu.",
+        f6_title: "Herrega Hojjataa Tokkoo Tokkoon", f6_desc: "Miseensi garee hundinuu herrega mataa isaa qaba — eenyu maal akka galmeesse yeroo hunda ni beektu.",
+        pricing_title: "Gatii Salphaa fi Dhugaa",
+        plan_free_name: "Bilisaa", plan_starter_name: "Jalqabaa", plan_growth_name: "Guddina", plan_enterprise_name: "Enterprise",
+        plan_free_1: "Hanga hojjattoota 3", plan_starter_1: "Hanga hojjattoota 10", plan_growth_1: "Hanga hojjattoota 25", plan_enterprise_1: "Hojjattoota daangaa hin qabne",
+        plan_common_2: "Daldalawwan daangaa hin qabne", plan_common_3: "Kuusaa fi gaaffilee", plan_contact: "Nu Quunnamaa",
+        ready_title: "Jalqabuuf Qophaa'aa?",
+        footer_terms: "Waliigaltee Tajaajilaa", footer_privacy: "Imaammata Iccitii", footer_support: "Deeggarsa",
+      }
+    };
+
+    let lang = localStorage.getItem("preferred_lang") || "en";
+
+    function applyLang() {
+      const dict = t[lang];
+      document.querySelectorAll("[data-i18n]").forEach(el => {
+        const key = el.getAttribute("data-i18n");
+        if (dict[key]) el.textContent = dict[key];
+      });
+      ["en", "fr", "am", "om"].forEach(l => {
+        document.getElementById(`lang-${l}`).classList.toggle("active", lang === l);
+      });
+    }
+
+    function setLang(l) {
+      lang = l;
+      localStorage.setItem("preferred_lang", l);
+      applyLang();
+    }
+
+    applyLang();
+  </script>
+</body>
+</html>
