@@ -496,6 +496,39 @@ async def update_item(
     return item
 
 
+@app.delete("/inventory/items/{item_id}")
+async def delete_item(
+    item_id: int,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    item = db.query(models.InventoryItem).filter(
+        models.InventoryItem.id == item_id, models.InventoryItem.company_id == company.id
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+
+    if item.quantity_on_hand != 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"This item still has {item.quantity_on_hand} {item.unit} in stock. "
+                   f"Log a stock movement to bring it to zero before deleting, so the value isn't silently lost."
+        )
+
+    open_reqs = db.query(models.Requisition).filter(
+        models.Requisition.inventory_item_id == item_id, models.Requisition.status == "open"
+    ).count()
+    if open_reqs > 0:
+        raise HTTPException(status_code=400, detail="This item has an open requisition. Close it first.")
+
+    db.delete(item)
+    db.commit()
+
+    await manager.broadcast_to_company(company.id, {"kind": "item_deleted", "id": item_id})
+
+    return {"status": "deleted"}
+
+
 @app.get("/inventory/items/lookup", response_model=List[schemas.InventoryItemOut])
 def lookup_items(
     db: Session = Depends(get_db),
@@ -730,6 +763,127 @@ async def close_requisition(
         wastage=requisition.wastage, status=requisition.status,
         created_at=requisition.created_at, closed_at=requisition.closed_at, closed_by=requisition.closed_by,
     )
+
+
+@app.put("/inventory/requisitions/{req_id}", response_model=schemas.RequisitionOut)
+async def correct_requisition(
+    req_id: int,
+    payload: schemas.RequisitionUpdate,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    """Owner-only correction of a mistaken entry — e.g. wrong quantity_consumed/returned typed
+    when closing. If the returned amount changes, the store's stock is adjusted by the
+    difference so the correction stays honest, with a movement logged explaining why."""
+    requisition = db.query(models.Requisition).filter(
+        models.Requisition.id == req_id, models.Requisition.company_id == company.id
+    ).first()
+    if not requisition:
+        raise HTTPException(status_code=404, detail="Requisition not found")
+
+    item = db.query(models.InventoryItem).filter(models.InventoryItem.id == requisition.inventory_item_id).first()
+
+    if payload.product_reference is not None:
+        requisition.product_reference = payload.product_reference
+
+    old_returned = requisition.quantity_returned or 0
+    new_consumed = payload.quantity_consumed if payload.quantity_consumed is not None else requisition.quantity_consumed
+    new_returned = payload.quantity_returned if payload.quantity_returned is not None else requisition.quantity_returned
+
+    if new_consumed is not None and new_returned is not None:
+        if new_consumed < 0 or new_returned < 0:
+            raise HTTPException(status_code=400, detail="Consumed and returned quantities cannot be negative")
+        if new_consumed + new_returned > requisition.quantity_issued:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Consumed + returned ({new_consumed + new_returned}) cannot exceed the {requisition.quantity_issued} issued"
+            )
+
+        delta_returned = new_returned - old_returned
+        if delta_returned != 0 and item:
+            item.quantity_on_hand += delta_returned
+            db.add(item)
+            movement = models.StockMovement(
+                company_id=company.id, inventory_item_id=item.id, employee_id=company.dashboard_username,
+                direction="in" if delta_returned > 0 else "out", quantity=abs(delta_returned),
+                reason=f"Correction to requisition #{requisition.id} (returned amount adjusted)",
+                resulting_quantity_on_hand=item.quantity_on_hand,
+            )
+            db.add(movement)
+
+        requisition.quantity_consumed = new_consumed
+        requisition.quantity_returned = new_returned
+        requisition.wastage = requisition.quantity_issued - new_consumed - new_returned
+
+    db.add(requisition)
+    db.commit()
+    db.refresh(requisition)
+
+    await manager.broadcast_to_company(company.id, {"kind": "requisitions_changed"})
+    if item:
+        await manager.broadcast_to_company(company.id, {
+            "kind": "stock_movement",
+            "inventory_item_id": item.id, "item_name": item.name, "sku": item.sku,
+            "direction": "in", "quantity": 0,
+            "quantity_on_hand": item.quantity_on_hand, "reorder_level": item.reorder_level,
+            "reason": f"Correction to requisition #{requisition.id}",
+        })
+
+    return schemas.RequisitionOut(
+        id=requisition.id, inventory_item_id=requisition.inventory_item_id,
+        item_name=item.name if item else None, sku=item.sku if item else None,
+        employee_id=requisition.employee_id, product_reference=requisition.product_reference,
+        quantity_requested=requisition.quantity_requested, quantity_issued=requisition.quantity_issued,
+        quantity_consumed=requisition.quantity_consumed, quantity_returned=requisition.quantity_returned,
+        wastage=requisition.wastage, status=requisition.status,
+        created_at=requisition.created_at, closed_at=requisition.closed_at, closed_by=requisition.closed_by,
+    )
+
+
+@app.delete("/inventory/requisitions/{req_id}")
+async def delete_requisition(
+    req_id: int,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    """Owner-only. Fully reverses the requisition's effect on stock — whatever material
+    hasn't already been accounted for as returned goes back into the store — then removes
+    the requisition record. The reversal itself stays visible in Stock Movement history."""
+    requisition = db.query(models.Requisition).filter(
+        models.Requisition.id == req_id, models.Requisition.company_id == company.id
+    ).first()
+    if not requisition:
+        raise HTTPException(status_code=404, detail="Requisition not found")
+
+    item = db.query(models.InventoryItem).filter(models.InventoryItem.id == requisition.inventory_item_id).first()
+    already_returned = requisition.quantity_returned or 0
+    net_to_reverse = requisition.quantity_issued - already_returned
+
+    if item and net_to_reverse != 0:
+        item.quantity_on_hand += net_to_reverse
+        db.add(item)
+        movement = models.StockMovement(
+            company_id=company.id, inventory_item_id=item.id, employee_id=company.dashboard_username,
+            direction="in", quantity=net_to_reverse,
+            reason=f"Requisition #{requisition.id} deleted — stock reversed",
+            resulting_quantity_on_hand=item.quantity_on_hand,
+        )
+        db.add(movement)
+
+    db.delete(requisition)
+    db.commit()
+
+    await manager.broadcast_to_company(company.id, {"kind": "requisitions_changed"})
+    if item:
+        await manager.broadcast_to_company(company.id, {
+            "kind": "stock_movement",
+            "inventory_item_id": item.id, "item_name": item.name, "sku": item.sku,
+            "direction": "in", "quantity": net_to_reverse,
+            "quantity_on_hand": item.quantity_on_hand, "reorder_level": item.reorder_level,
+            "reason": f"Requisition #{req_id} deleted — stock reversed",
+        })
+
+    return {"status": "deleted", "stock_reversed": net_to_reverse}
 
 
 @app.get("/inventory/requisitions/open/lookup", response_model=List[schemas.RequisitionOut])

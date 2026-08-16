@@ -139,7 +139,7 @@
   <h2>Requisitions (Store → Process → Final Product)</h2>
   <input type="text" id="req-search" class="search-box" placeholder="Search by item, employee, or product reference...">
   <table>
-    <thead><tr><th>Item</th><th>Employee</th><th>Product / Job</th><th>Requested</th><th>Issued</th><th>Consumed</th><th>Returned</th><th>Wastage</th><th>Status</th><th>Opened</th><th>Closed</th></tr></thead>
+    <thead><tr><th>Item</th><th>Employee</th><th>Product / Job</th><th>Requested</th><th>Issued</th><th>Consumed</th><th>Returned</th><th>Wastage</th><th>Status</th><th>Opened</th><th>Closed</th><th></th></tr></thead>
     <tbody id="req-body"></tbody>
   </table>
 
@@ -353,7 +353,7 @@
           <td>${item.quantity_on_hand}${isLow ? " ⚠" : ""}</td>
           <td>${item.unit}</td><td>${item.reorder_level}</td>
           <td>${fmt(item.unit_cost || 0)}</td><td>${fmt(value)}</td>
-          <td><button onclick="editItem(${item.id})" style="cursor:pointer;">Edit</button></td>`;
+          <td><button onclick="editItem(${item.id})" style="cursor:pointer;">Edit</button> <button onclick="deleteItem(${item.id})" style="cursor:pointer;">Delete</button></td>`;
         invBody.appendChild(row);
       });
       updateSummary();
@@ -381,12 +381,29 @@
           <td>${fmt(item.unit_cost || 0)}</td><td>${usefulLife}</td>
           <td>${accumulated !== null ? fmt(accumulated) : "—"}</td>
           <td>${fmt(bookValue)}</td>
-          <td><button onclick="editItem(${item.id})" style="cursor:pointer;">Edit</button></td>`;
+          <td><button onclick="editItem(${item.id})" style="cursor:pointer;">Edit</button> <button onclick="deleteItem(${item.id})" style="cursor:pointer;">Delete</button></td>`;
         bodyEl.appendChild(row);
       });
     }
 
     document.getElementById("far-search").addEventListener("input", renderFixedAssetTable);
+
+    async function deleteItem(id) {
+      if (!confirm("Delete this item permanently? This only works if its quantity on hand is zero.")) return;
+
+      const res = await fetch(`/inventory/items/${id}`, {
+        method: "DELETE",
+        headers: { "Authorization": authHeader }
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.detail || "Failed to delete item.");
+        return;
+      }
+      delete inventoryItems[id];
+      renderInventoryTable();
+    }
 
     async function editItem(id) {
       const item = inventoryItems[id];
@@ -510,12 +527,63 @@
             <td>${r.quantity_requested}</td><td>${r.quantity_issued}</td>
             <td>${r.quantity_consumed ?? ""}</td><td>${r.quantity_returned ?? ""}</td>
             <td>${r.wastage ?? ""}${r.wastage > 0 ? " ⚠" : ""}</td>
-            <td>${r.status}</td><td>${opened}</td><td>${closed}</td>`;
+            <td>${r.status}</td><td>${opened}</td><td>${closed}</td>
+            <td>
+              <button onclick="editRequisition(${r.id})" style="cursor:pointer;">Edit</button>
+              <button onclick="deleteRequisition(${r.id})" style="cursor:pointer;">Delete</button>
+            </td>`;
           bodyEl.appendChild(row);
         });
     }
 
     document.getElementById("req-search").addEventListener("input", renderRequisitionsTable);
+
+    async function editRequisition(id) {
+      const r = allRequisitions[id];
+      if (!r) return;
+
+      const newRef = prompt("Product / Job Reference:", r.product_reference || "");
+      if (newRef === null) return;
+
+      const newConsumed = prompt("Quantity Consumed:", r.quantity_consumed ?? "");
+      if (newConsumed === null) return;
+
+      const newReturned = prompt("Quantity Returned:", r.quantity_returned ?? 0);
+      if (newReturned === null) return;
+
+      const payload = { product_reference: newRef.trim() || null };
+      if (newConsumed.trim() !== "") payload.quantity_consumed = parseFloat(newConsumed);
+      if (newReturned.trim() !== "") payload.quantity_returned = parseFloat(newReturned);
+
+      const res = await fetch(`/inventory/requisitions/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": authHeader },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.detail || "Failed to update requisition.");
+        return;
+      }
+      // Server broadcasts "requisitions_changed" back over the WebSocket, which reloads this table.
+    }
+
+    async function deleteRequisition(id) {
+      if (!confirm("Delete this requisition? Any material not yet marked as returned will be put back into the store automatically.")) return;
+
+      const res = await fetch(`/inventory/requisitions/${id}`, {
+        method: "DELETE",
+        headers: { "Authorization": authHeader }
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.detail || "Failed to delete requisition.");
+        return;
+      }
+      // Server broadcasts "requisitions_changed" and "stock_movement" — both tables update live.
+    }
 
     let lastReportData = null;
 
@@ -730,6 +798,9 @@
           renderInventoryTable();
         } else if (msg.kind === "item_updated") {
           inventoryItems[msg.id] = msg;
+          renderInventoryTable();
+        } else if (msg.kind === "item_deleted") {
+          delete inventoryItems[msg.id];
           renderInventoryTable();
         } else if (msg.kind === "transactions_changed") {
           reloadTransactions();

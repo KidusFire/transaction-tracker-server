@@ -160,6 +160,13 @@ class RequisitionClose(BaseModel):
     quantity_returned: float = 0
 
 
+class RequisitionUpdate(BaseModel):
+    """Owner-only correction of a requisition already submitted (open or closed)."""
+    product_reference: Optional[str] = None
+    quantity_consumed: Optional[float] = None
+    quantity_returned: Optional[float] = None
+
+
 class RequisitionOut(BaseModel):
     id: int
     inventory_item_id: int
