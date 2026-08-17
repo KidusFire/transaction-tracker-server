@@ -11,7 +11,7 @@ security = HTTPBasic()
 
 # Plan limits: max number of active employees allowed per plan. None = unlimited.
 PLAN_LIMITS = {
-    "free": 3,
+    "free": 1,
     "starter": 10,
     "growth": 25,
     "enterprise": None,
