@@ -64,6 +64,7 @@ class CompanyOut(BaseModel):
     name: str
     plan: str
     currency: str
+    trial_ends_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
