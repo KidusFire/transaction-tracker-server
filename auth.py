@@ -1,5 +1,6 @@
 import secrets
 import bcrypt
+from datetime import datetime
 from fastapi import Header, HTTPException, Depends
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy.orm import Session
@@ -37,6 +38,11 @@ def get_company_from_api_key(x_api_key: str = Header(...), db: Session = Depends
         raise HTTPException(status_code=401, detail="Invalid API key")
     if not company.is_active:
         raise HTTPException(status_code=403, detail="This account is inactive")
+    if company.plan == "free" and company.trial_ends_at and datetime.utcnow() > company.trial_ends_at:
+        raise HTTPException(
+            status_code=403,
+            detail="Your 30-day free trial has ended. Upgrade your plan to keep logging transactions and inventory."
+        )
     return company
 
 

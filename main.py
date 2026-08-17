@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 
 from database import engine, get_db
@@ -56,6 +56,13 @@ with engine.connect() as conn:
 with engine.connect() as conn:
     try:
         conn.execute(text("ALTER TABLE companies ADD COLUMN IF NOT EXISTS recovery_key_hash VARCHAR"))
+        conn.commit()
+    except Exception:
+        pass
+
+with engine.connect() as conn:
+    try:
+        conn.execute(text("ALTER TABLE companies ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMP"))
         conn.commit()
     except Exception:
         pass
@@ -138,6 +145,10 @@ def signup(payload: schemas.CompanySignup, db: Session = Depends(get_db)):
 
     recovery_key = auth.generate_api_key()
 
+    # Free plan accounts get a 30-day trial — after that, the employee app is blocked
+    # until they upgrade. Paid plans (starter/growth/enterprise) never expire this way.
+    trial_ends_at = datetime.utcnow() + timedelta(days=30) if payload.plan == "free" else None
+
     company = models.Company(
         name=payload.company_name,
         api_key=auth.generate_api_key(),
@@ -146,6 +157,7 @@ def signup(payload: schemas.CompanySignup, db: Session = Depends(get_db)):
         plan=payload.plan,
         currency=payload.currency,
         recovery_key_hash=auth.hash_password(recovery_key),
+        trial_ends_at=trial_ends_at,
     )
     db.add(company)
     db.commit()

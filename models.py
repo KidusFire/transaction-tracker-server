@@ -18,6 +18,7 @@ class Company(Base):
     currency = Column(String, default="USD")        # "USD", "ETB", "GNF", "EUR", etc.
     is_active = Column(Boolean, default=True)       # for suspending a delinquent/cancelled account later
     recovery_key_hash = Column(String, nullable=True)  # lets the owner reset a forgotten dashboard password
+    trial_ends_at = Column(DateTime, nullable=True)    # free plan only — employee app is blocked after this date
     created_at = Column(DateTime, default=datetime.utcnow)
 
     transactions = relationship("Transaction", back_populates="company")
