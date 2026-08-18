@@ -237,7 +237,7 @@ def start_checkout(
             callback_url=f"{base_url}/billing/webhook",
             return_url=f"{base_url}/billing/return?tx_ref={tx_ref}",
             title=f"{payload.plan.title()} Plan",
-            description=f"{payload.plan.title()} plan subscription — {company.name}",
+            description=f"{payload.plan.title()} plan subscription - {company.name}",
         )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Could not start payment: {e}")

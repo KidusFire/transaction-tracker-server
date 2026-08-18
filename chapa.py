@@ -30,7 +30,7 @@ def initialize_checkout(amount_etb: float, tx_ref: str, customer_email: str,
         "customization[title]": title[:16],  # Chapa limits this field's length
         "customization[description]": description,
     }
-    response = requests.post(f"{CHAPA_BASE_URL}/transaction/initialize", headers=headers, data=payload, timeout=15)
+    response = requests.post(f"{CHAPA_BASE_URL}/transaction/initialize", headers=headers, json=payload, timeout=15)
     response.raise_for_status()
     return response.json()
 
