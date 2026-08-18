@@ -6,7 +6,7 @@ Reads credentials from environment variables — never hardcode real keys here.
 import os
 import requests
 
-CHAPA_SECRET_KEY = os.getenv("CHAPA_SECRET_KEY", "")
+CHAPA_SECRET_KEY = os.getenv("CHAPA_SECRET_KEY", "").strip()
 CHAPA_BASE_URL = "https://api.chapa.co/v1"
 
 
@@ -18,6 +18,16 @@ def initialize_checkout(amount_etb: float, tx_ref: str, customer_email: str,
     on success, response["data"]["checkout_url"] is where to send the customer.
     Raises requests.HTTPError if Chapa rejects the request.
     """
+    if not CHAPA_SECRET_KEY:
+        raise ValueError("CHAPA_SECRET_KEY is not set in the server's environment variables")
+    try:
+        CHAPA_SECRET_KEY.encode("latin-1")
+    except UnicodeEncodeError:
+        raise ValueError(
+            "CHAPA_SECRET_KEY contains an invalid character (likely a copy-paste artifact like a "
+            "smart quote or hidden character) — re-copy it fresh from Chapa's dashboard and re-save it in Railway."
+        )
+
     headers = {"Authorization": f"Bearer {CHAPA_SECRET_KEY}"}
     payload = {
         "amount": str(amount_etb),
