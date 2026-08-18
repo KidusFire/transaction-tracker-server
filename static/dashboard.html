@@ -172,6 +172,13 @@
     <tbody id="movement-body"></tbody>
   </table>
 
+  <h2>Sales Orders</h2>
+  <input type="text" id="so-search" class="search-box" placeholder="Search by customer or employee...">
+  <table>
+    <thead><tr><th>Order #</th><th>Customer</th><th>Contact</th><th>Employee</th><th>Total</th><th>Currency</th><th>Status</th><th>Created</th><th>Documents</th></tr></thead>
+    <tbody id="so-body"></tbody>
+  </table>
+
   <script>
     const dashTranslations = {
       en: {
@@ -657,6 +664,41 @@
 
     let allRequisitions = {};
 
+    let allSalesOrders = {};
+
+    async function loadSalesOrders() {
+      const opts = { headers: { "Authorization": authHeader } };
+      const orders = await fetch("/sales-orders", opts).then(r => r.json());
+      allSalesOrders = {};
+      orders.forEach(o => { allSalesOrders[o.id] = o; });
+      renderSalesOrdersTable();
+    }
+
+    function renderSalesOrdersTable() {
+      const filter = (document.getElementById("so-search").value || "").toLowerCase();
+      const bodyEl = document.getElementById("so-body");
+      bodyEl.innerHTML = "";
+      Object.values(allSalesOrders)
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        .forEach(o => {
+          const haystack = `${o.customer_name} ${o.employee_id}`.toLowerCase();
+          if (filter && !haystack.includes(filter)) return;
+
+          const total = o.line_items.reduce((sum, li) => sum + (li.quantity * li.unit_price), 0);
+          const created = new Date(o.created_at).toLocaleString();
+
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>SO-${o.id}</td><td>${o.customer_name}</td><td>${o.customer_contact || ""}</td>
+            <td>${o.employee_id}</td><td>${fmt(total, o.currency)}</td><td>${o.currency}</td>
+            <td>${o.status}</td><td>${created}</td>
+            <td><a href="/sales-orders/${o.id}/document/proforma" target="_blank" style="cursor:pointer;">📄 Proforma</a></td>`;
+          bodyEl.appendChild(row);
+        });
+    }
+
+    document.getElementById("so-search").addEventListener("input", renderSalesOrdersTable);
+
     async function loadRequisitions() {
       const opts = { headers: { "Authorization": authHeader } };
       const reqs = await fetch("/inventory/requisitions", opts).then(r => r.json());
@@ -968,6 +1010,7 @@
       renderMovementsTable();
 
       await loadRequisitions();
+      await loadSalesOrders();
     }
 
     function connectWebSocket() {

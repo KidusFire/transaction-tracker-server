@@ -16,6 +16,7 @@ import models
 import schemas
 import auth
 import chapa
+import documents
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -338,6 +339,96 @@ def verify_payment_manually(
 def billing_return_page():
     with open("static/billing-return.html", encoding="utf-8") as f:
         return f.read()
+
+
+# ============ SALES ORDERS (document lifecycle: Proforma -> Invoice -> ... ) ============
+
+@app.post("/sales-orders", response_model=schemas.SalesOrderOut)
+def create_sales_order(
+    payload: schemas.SalesOrderCreate,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_api_key)
+):
+    employee = auth.verify_employee(company, payload.employee_username, payload.employee_password, db)
+
+    if not payload.line_items:
+        raise HTTPException(status_code=400, detail="A sales order needs at least one line item")
+
+    order = models.SalesOrder(
+        company_id=company.id, employee_id=employee.username,
+        customer_name=payload.customer_name, customer_contact=payload.customer_contact,
+        currency=payload.currency, note=payload.note, status="proforma",
+    )
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+
+    for li in payload.line_items:
+        db.add(models.SalesOrderLineItem(
+            sales_order_id=order.id, description=li.description,
+            quantity=li.quantity, unit_price=li.unit_price,
+        ))
+    db.commit()
+
+    line_items = db.query(models.SalesOrderLineItem).filter(models.SalesOrderLineItem.sales_order_id == order.id).all()
+
+    return schemas.SalesOrderOut(
+        id=order.id, employee_id=order.employee_id, customer_name=order.customer_name,
+        customer_contact=order.customer_contact, currency=order.currency, status=order.status,
+        note=order.note, created_at=order.created_at, updated_at=order.updated_at,
+        line_items=[schemas.LineItemOut.model_validate(li) for li in line_items],
+    )
+
+
+@app.get("/sales-orders", response_model=List[schemas.SalesOrderOut])
+def list_sales_orders(
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    orders = db.query(models.SalesOrder).filter(
+        models.SalesOrder.company_id == company.id
+    ).order_by(models.SalesOrder.created_at.desc()).all()
+
+    result = []
+    for order in orders:
+        line_items = db.query(models.SalesOrderLineItem).filter(
+            models.SalesOrderLineItem.sales_order_id == order.id
+        ).all()
+        result.append(schemas.SalesOrderOut(
+            id=order.id, employee_id=order.employee_id, customer_name=order.customer_name,
+            customer_contact=order.customer_contact, currency=order.currency, status=order.status,
+            note=order.note, created_at=order.created_at, updated_at=order.updated_at,
+            line_items=[schemas.LineItemOut.model_validate(li) for li in line_items],
+        ))
+    return result
+
+
+@app.get("/sales-orders/{order_id}/document/proforma")
+def download_proforma(
+    order_id: int,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    order = db.query(models.SalesOrder).filter(
+        models.SalesOrder.id == order_id, models.SalesOrder.company_id == company.id
+    ).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+
+    line_items = db.query(models.SalesOrderLineItem).filter(
+        models.SalesOrderLineItem.sales_order_id == order.id
+    ).all()
+
+    pdf_bytes = documents.generate_document_pdf(
+        "PROFORMA INVOICE (QUOTE)", company.name, order, line_items
+    )
+
+    from fastapi.responses import Response
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="Proforma_SO-{order.id}.pdf"'}
+    )
 
 @app.post("/employees", response_model=schemas.EmployeeOut)
 def create_employee(

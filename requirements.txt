@@ -1,14 +1,9 @@
 fastapi
-
 uvicorn[standard]
-
 sqlalchemy
-
 psycopg2-binary
-
 pydantic
-
 python-dotenv
-
 bcrypt
 requests
+reportlab

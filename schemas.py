@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
 
 class TransactionCreate(BaseModel):
@@ -87,6 +87,48 @@ class BillingCheckoutRequest(BaseModel):
 
 class BillingCheckoutResponse(BaseModel):
     checkout_url: str
+
+
+class LineItemCreate(BaseModel):
+    description: str
+    quantity: float
+    unit_price: float
+
+
+class SalesOrderCreate(BaseModel):
+    employee_username: str
+    employee_password: str
+    customer_name: str
+    customer_contact: Optional[str] = None
+    currency: str = "USD"
+    note: Optional[str] = None
+    line_items: List[LineItemCreate]
+
+
+class LineItemOut(BaseModel):
+    id: int
+    description: str
+    quantity: float
+    unit_price: float
+
+    class Config:
+        from_attributes = True
+
+
+class SalesOrderOut(BaseModel):
+    id: int
+    employee_id: str
+    customer_name: str
+    customer_contact: Optional[str]
+    currency: str
+    status: str
+    note: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    line_items: List[LineItemOut] = []
+
+    class Config:
+        from_attributes = True
 
 
 class EmployeeCreate(BaseModel):

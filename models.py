@@ -137,3 +137,34 @@ class PendingPayment(Base):
     status = Column(String, default="pending")  # "pending", "success", "failed"
     created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
+
+
+class SalesOrder(Base):
+    """
+    Tracks a customer order through its real-world paper trail:
+    Proforma (quote) -> Sales Invoice -> Delivery Note -> Payment Receipt ->
+    Provisional Acceptance -> Warranty Certificate -> Final Acceptance -> Credit Note.
+    Each stage becomes available as a downloadable PDF once the order reaches it.
+    """
+    __tablename__ = "sales_orders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), index=True)
+    employee_id = Column(String)              # who created it
+    customer_name = Column(String)
+    customer_contact = Column(String, nullable=True)
+    currency = Column(String, default="USD")
+    status = Column(String, default="proforma")  # proforma, confirmed, shipped, paid, testing, handover, final, credited
+    note = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SalesOrderLineItem(Base):
+    __tablename__ = "sales_order_line_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sales_order_id = Column(Integer, ForeignKey("sales_orders.id"), index=True)
+    description = Column(String)
+    quantity = Column(Float)
+    unit_price = Column(Float)
