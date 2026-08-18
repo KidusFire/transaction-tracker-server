@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Payment Status — Company Tracker</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f5f7; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+    .card { background: white; border-radius: 10px; padding: 40px; max-width: 420px; width: 100%; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+    .spinner { font-size: 32px; margin-bottom: 16px; }
+    h1 { font-size: 20px; margin: 0 0 10px; }
+    p { color: #666; font-size: 14px; }
+    a.btn { display: inline-block; margin-top: 20px; padding: 10px 24px; background: #2c3e50; color: white; border-radius: 6px; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="card" id="content">
+    <div class="spinner">⏳</div>
+    <h1>Checking your payment...</h1>
+    <p>This only takes a moment.</p>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const txRef = params.get("tx_ref");
+
+    async function checkStatus() {
+      const user = prompt("Dashboard username (to confirm it's you):");
+      const pass = prompt("Dashboard password:");
+      const authHeader = "Basic " + btoa(`${user}:${pass}`);
+
+      try {
+        const res = await fetch(`/billing/verify/${txRef}`, {
+          headers: { "Authorization": authHeader }
+        });
+        const data = await res.json();
+
+        const content = document.getElementById("content");
+        if (res.ok && data.status === "success") {
+          content.innerHTML = `
+            <div class="spinner">✅</div>
+            <h1>Payment successful!</h1>
+            <p>Your account is now on the ${data.plan} plan.</p>
+            <a class="btn" href="/dashboard">Go to Dashboard</a>
+          `;
+        } else {
+          content.innerHTML = `
+            <div class="spinner">⏳</div>
+            <h1>Payment still processing</h1>
+            <p>If you completed payment, this can take a minute to confirm. Check your dashboard shortly.</p>
+            <a class="btn" href="/dashboard">Go to Dashboard</a>
+          `;
+        }
+      } catch (err) {
+        document.getElementById("content").innerHTML = `
+          <div class="spinner">⚠️</div>
+          <h1>Couldn't check status</h1>
+          <p>Please check your dashboard directly.</p>
+          <a class="btn" href="/dashboard">Go to Dashboard</a>
+        `;
+      }
+    }
+
+    checkStatus();
+  </script>
+</body>
+</html>

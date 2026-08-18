@@ -18,6 +18,13 @@ PLAN_LIMITS = {
     "enterprise": None,
 }
 
+# Monthly price in ETB for each paid plan — charged via Chapa
+PLAN_PRICES_ETB = {
+    "starter": 500,
+    "growth": 1500,
+    "enterprise": 4000,
+}
+
 
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
@@ -38,10 +45,10 @@ def get_company_from_api_key(x_api_key: str = Header(...), db: Session = Depends
         raise HTTPException(status_code=401, detail="Invalid API key")
     if not company.is_active:
         raise HTTPException(status_code=403, detail="This account is inactive")
-    if company.plan == "free" and company.trial_ends_at and datetime.utcnow() > company.trial_ends_at:
+    if company.trial_ends_at and datetime.utcnow() > company.trial_ends_at:
         raise HTTPException(
             status_code=403,
-            detail="Your 30-day free trial has ended. Upgrade your plan to keep logging transactions and inventory."
+            detail=f"Your {company.plan} plan access has expired. Renew your subscription to keep logging transactions and inventory."
         )
     return company
 

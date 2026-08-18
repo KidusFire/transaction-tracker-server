@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
@@ -87,6 +87,17 @@
       <thead><tr><th data-i18n="date">Date</th><th data-i18n="employee">Employee</th><th data-i18n="type">Type</th><th data-i18n="amount">Amount</th><th data-i18n="category">Category</th><th data-i18n="note_reason">Note / Reason</th></tr></thead>
       <tbody id="report-detail-body"></tbody>
     </table>
+  </div>
+
+  <h2>Plan &amp; Billing</h2>
+  <div style="background:white; border-radius:8px; padding:16px; margin-bottom:20px;">
+    <div style="font-size:13px; color:#666; margin-bottom:14px;">Current plan: <strong id="current-plan-label">—</strong></div>
+    <div style="display:flex; gap:12px; flex-wrap:wrap;">
+      <button onclick="upgradePlan('starter')" style="padding:10px 18px; background:#2c3e50; color:white; border:none; border-radius:6px; cursor:pointer;">Starter — 500 ETB/mo</button>
+      <button onclick="upgradePlan('growth')" style="padding:10px 18px; background:#2c3e50; color:white; border:none; border-radius:6px; cursor:pointer;">Growth — 1500 ETB/mo</button>
+      <button onclick="upgradePlan('enterprise')" style="padding:10px 18px; background:#2c3e50; color:white; border:none; border-radius:6px; cursor:pointer;">Enterprise — 4000 ETB/mo</button>
+    </div>
+    <div id="billing-error" style="color:#c0392b; font-size:13px; margin-top:10px;"></div>
   </div>
 
   <h2 data-i18n="account_recovery">Account Recovery</h2>
@@ -317,6 +328,8 @@
       return `${cur || currency} ${n}`;
     }
 
+    // Renders a {currency: amount} map as stacked lines in a summary card,
+    // e.g. "USD 100" on one line and "ETB 500" on the next — never added together.
     function renderCurrencyLines(elId, amountsByCurrency) {
       const el = document.getElementById(elId);
       const entries = Object.entries(amountsByCurrency);
@@ -435,6 +448,8 @@
         alert("Failed to update transaction.");
         return;
       }
+      // The server broadcasts "transactions_changed" back over the WebSocket,
+      // which triggers reloadTransactions() — no need to call it here too.
     }
 
     async function deleteTransaction(id) {
@@ -464,6 +479,7 @@
     }
 
     function calcDepreciation(item) {
+      // Straight-line depreciation: (cost - salvage) spread evenly over useful_life_years.
       if (!item.acquisition_date || !item.useful_life_years || item.useful_life_years <= 0) {
         return { accumulated: null, bookValue: item.unit_cost || 0 };
       }
@@ -707,6 +723,7 @@
         alert(data.detail || "Failed to update requisition.");
         return;
       }
+      // Server broadcasts "requisitions_changed" back over the WebSocket, which reloads this table.
     }
 
     async function deleteRequisition(id) {
@@ -722,6 +739,7 @@
         alert(data.detail || "Failed to delete requisition.");
         return;
       }
+      // Server broadcasts "requisitions_changed" and "stock_movement" — both tables update live.
     }
 
     let lastReportData = null;
@@ -823,6 +841,28 @@
       URL.revokeObjectURL(url);
     }
 
+    async function upgradePlan(plan) {
+      const errorEl = document.getElementById("billing-error");
+      errorEl.textContent = "";
+
+      const email = prompt("Email for the payment receipt:");
+      if (!email) return;
+
+      const res = await fetch("/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": authHeader },
+        body: JSON.stringify({ plan: plan, customer_email: email })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        errorEl.textContent = data.detail || "Could not start checkout.";
+        return;
+      }
+
+      window.location.href = data.checkout_url;
+    }
+
     async function regenerateRecoveryKey() {
       const res = await fetch("/company/recovery-key/regenerate", {
         method: "POST",
@@ -893,20 +933,23 @@
       const company = await fetch("/company/me", opts).then(r => r.json());
       currency = company.currency || "USD";
       document.querySelector("h1").textContent = `Live Dashboard — ${company.name}`;
+      document.getElementById("current-plan-label").textContent = company.plan.charAt(0).toUpperCase() + company.plan.slice(1);
 
-      if (company.plan === "free" && company.trial_ends_at) {
+      if (company.trial_ends_at) {
         const banner = document.getElementById("trial-banner");
         const endsAt = new Date(company.trial_ends_at);
         const daysLeft = Math.ceil((endsAt - new Date()) / (1000 * 60 * 60 * 24));
+        const isFree = company.plan === "free";
         banner.style.display = "block";
         if (daysLeft > 0) {
           banner.style.background = daysLeft <= 5 ? "#fff3cd" : "#eaf2fa";
           banner.style.color = "#2c3e50";
-          banner.innerHTML = `Free trial: <strong>${daysLeft} day${daysLeft === 1 ? "" : "s"} left</strong>. Employee app access stops after that unless you upgrade. <a href="/support">Contact us to upgrade</a>.`;
+          const label = isFree ? "Free trial" : `${company.plan.charAt(0).toUpperCase() + company.plan.slice(1)} plan`;
+          banner.innerHTML = `${label}: <strong>${daysLeft} day${daysLeft === 1 ? "" : "s"} left</strong>. Employee app access stops after that unless you ${isFree ? "upgrade" : "renew"}.`;
         } else {
           banner.style.background = "#fdecea";
           banner.style.color = "#c0392b";
-          banner.innerHTML = `<strong>Your free trial has ended.</strong> Employees can no longer log new entries until you upgrade. <a href="/support">Contact us to upgrade</a>.`;
+          banner.innerHTML = `<strong>Your ${isFree ? "free trial" : company.plan + " plan"} has ended.</strong> Employees can no longer log new entries until you ${isFree ? "upgrade" : "renew"} below.`;
         }
       }
 
@@ -961,6 +1004,8 @@
           reloadTransactions();
         } else if (msg.kind === "requisitions_changed") {
           loadRequisitions();
+        } else if (msg.kind === "plan_changed") {
+          location.reload();  // simplest way to refresh plan label, trial banner, and limits everywhere
         }
       };
 

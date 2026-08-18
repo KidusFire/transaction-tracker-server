@@ -123,3 +123,17 @@ class StockMovement(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     linked_transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=True)
     resulting_quantity_on_hand = Column(Float, nullable=True)  # snapshot of stock level right after this movement
+
+
+class PendingPayment(Base):
+    """Tracks a Chapa checkout from initiation through webhook confirmation."""
+    __tablename__ = "pending_payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), index=True)
+    tx_ref = Column(String, unique=True, index=True)
+    plan = Column(String)
+    amount_etb = Column(Float)
+    status = Column(String, default="pending")  # "pending", "success", "failed"
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)

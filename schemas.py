@@ -80,6 +80,15 @@ class RecoveryKeyOut(BaseModel):
     recovery_key: str
 
 
+class BillingCheckoutRequest(BaseModel):
+    plan: str
+    customer_email: str
+
+
+class BillingCheckoutResponse(BaseModel):
+    checkout_url: str
+
+
 class EmployeeCreate(BaseModel):
     username: str
     password: str

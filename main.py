@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, HTTPException, Query
+from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -6,11 +6,16 @@ from sqlalchemy import func, text
 from typing import List, Optional
 from datetime import datetime, timedelta
 import json
+import uuid
+import hmac
+import hashlib
+import os
 
 from database import engine, get_db
 import models
 import schemas
 import auth
+import chapa
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -66,6 +71,8 @@ with engine.connect() as conn:
         conn.commit()
     except Exception:
         pass
+
+models.Base.metadata.create_all(bind=engine)  # picks up the new PendingPayment table
 
 with engine.connect() as conn:
     try:
@@ -200,7 +207,137 @@ def regenerate_recovery_key(
     return schemas.RecoveryKeyOut(recovery_key=new_key)
 
 
-# ============ EMPLOYEE MANAGEMENT (dashboard/owner only) ============
+# ============ BILLING (Chapa) ============
+
+@app.post("/billing/checkout", response_model=schemas.BillingCheckoutResponse)
+def start_checkout(
+    payload: schemas.BillingCheckoutRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    if payload.plan not in auth.PLAN_PRICES_ETB:
+        raise HTTPException(status_code=400, detail=f"Choose one of: {list(auth.PLAN_PRICES_ETB.keys())}")
+
+    amount = auth.PLAN_PRICES_ETB[payload.plan]
+    tx_ref = f"company-{company.id}-{uuid.uuid4().hex[:12]}"
+
+    pending = models.PendingPayment(
+        company_id=company.id, tx_ref=tx_ref, plan=payload.plan, amount_etb=amount, status="pending"
+    )
+    db.add(pending)
+    db.commit()
+
+    base_url = str(request.base_url).rstrip("/")
+
+    try:
+        result = chapa.initialize_checkout(
+            amount_etb=amount, tx_ref=tx_ref, customer_email=payload.customer_email,
+            first_name=company.dashboard_username,
+            callback_url=f"{base_url}/billing/webhook",
+            return_url=f"{base_url}/billing/return?tx_ref={tx_ref}",
+            title=f"{payload.plan.title()} Plan",
+            description=f"{payload.plan.title()} plan subscription — {company.name}",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not start payment: {e}")
+
+    checkout_url = result.get("data", {}).get("checkout_url")
+    if not checkout_url:
+        raise HTTPException(status_code=502, detail="Chapa did not return a checkout URL")
+
+    return schemas.BillingCheckoutResponse(checkout_url=checkout_url)
+
+
+def _apply_successful_payment(db: Session, pending: models.PendingPayment):
+    """Shared logic: called from both the webhook and the manual verify fallback,
+    so a payment only ever gets applied once (idempotent)."""
+    if pending.status == "success":
+        return  # already applied, e.g. webhook and manual verify both fired
+
+    company = db.query(models.Company).filter(models.Company.id == pending.company_id).first()
+    if not company:
+        return
+
+    company.plan = pending.plan
+    company.trial_ends_at = datetime.utcnow() + timedelta(days=30)
+    company.is_active = True
+    db.add(company)
+
+    pending.status = "success"
+    pending.completed_at = datetime.utcnow()
+    db.add(pending)
+    db.commit()
+
+
+@app.post("/billing/webhook")
+async def billing_webhook(request: Request, db: Session = Depends(get_db)):
+    """Chapa calls this automatically when a payment completes. Configure this URL
+    (https://your-domain/billing/webhook) in Chapa's dashboard under Settings > Webhooks."""
+    body = await request.body()
+
+    webhook_secret = os.getenv("CHAPA_WEBHOOK_SECRET", "")
+    if webhook_secret:
+        signature = request.headers.get("Chapa-Signature", "")
+        expected = hmac.new(webhook_secret.encode(), body, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(signature, expected):
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+    payload = await request.json()
+    tx_ref = payload.get("tx_ref")
+    if not tx_ref:
+        raise HTTPException(status_code=400, detail="Missing tx_ref")
+
+    # Don't trust the webhook body alone — ask Chapa directly to confirm the payment really succeeded.
+    try:
+        verification = chapa.verify_transaction(tx_ref)
+    except Exception:
+        raise HTTPException(status_code=502, detail="Could not verify with Chapa")
+
+    if verification.get("data", {}).get("status") != "success":
+        return {"status": "ignored — payment not successful"}
+
+    pending = db.query(models.PendingPayment).filter(models.PendingPayment.tx_ref == tx_ref).first()
+    if not pending:
+        raise HTTPException(status_code=404, detail="Unknown transaction reference")
+
+    _apply_successful_payment(db, pending)
+
+    await manager.broadcast_to_company(pending.company_id, {"kind": "plan_changed"})
+
+    return {"status": "ok"}
+
+
+@app.get("/billing/verify/{tx_ref}")
+def verify_payment_manually(
+    tx_ref: str,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    """Fallback for the return page — in case the webhook hasn't arrived yet by the
+    time the customer is redirected back from Chapa."""
+    pending = db.query(models.PendingPayment).filter(
+        models.PendingPayment.tx_ref == tx_ref, models.PendingPayment.company_id == company.id
+    ).first()
+    if not pending:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    if pending.status != "success":
+        try:
+            verification = chapa.verify_transaction(tx_ref)
+        except Exception:
+            raise HTTPException(status_code=502, detail="Could not verify with Chapa")
+
+        if verification.get("data", {}).get("status") == "success":
+            _apply_successful_payment(db, pending)
+
+    return {"status": pending.status, "plan": pending.plan}
+
+
+@app.get("/billing/return", response_class=HTMLResponse)
+def billing_return_page():
+    with open("static/billing-return.html", encoding="utf-8") as f:
+        return f.read()
 
 @app.post("/employees", response_model=schemas.EmployeeOut)
 def create_employee(
