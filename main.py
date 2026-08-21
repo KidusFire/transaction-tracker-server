@@ -73,7 +73,33 @@ with engine.connect() as conn:
     except Exception:
         pass
 
-models.Base.metadata.create_all(bind=engine)  # picks up the new PendingPayment table
+models.Base.metadata.create_all(bind=engine)  # picks up the new PendingPayment / SalesOrder tables
+
+with engine.connect() as conn:
+    try:
+        conn.execute(text("ALTER TABLE companies ADD COLUMN IF NOT EXISTS bank_details TEXT"))
+        conn.commit()
+    except Exception:
+        pass
+
+with engine.connect() as conn:
+    try:
+        conn.execute(text("ALTER TABLE companies ADD COLUMN IF NOT EXISTS logo_image TEXT"))
+        conn.execute(text("ALTER TABLE companies ADD COLUMN IF NOT EXISTS logo_mime VARCHAR"))
+        conn.commit()
+    except Exception:
+        pass
+
+with engine.connect() as conn:
+    try:
+        conn.execute(text("ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS validity_days INTEGER DEFAULT 30"))
+        conn.execute(text("ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS delivery_terms VARCHAR"))
+        conn.execute(text("ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS downpayment_percent FLOAT"))
+        conn.execute(text("ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS payment_terms VARCHAR"))
+        conn.execute(text("ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS vat_percent FLOAT DEFAULT 15.0"))
+        conn.commit()
+    except Exception:
+        pass
 
 with engine.connect() as conn:
     try:
@@ -358,6 +384,9 @@ def create_sales_order(
         company_id=company.id, employee_id=employee.username,
         customer_name=payload.customer_name, customer_contact=payload.customer_contact,
         currency=payload.currency, note=payload.note, status="proforma",
+        validity_days=payload.validity_days, delivery_terms=payload.delivery_terms,
+        downpayment_percent=payload.downpayment_percent, payment_terms=payload.payment_terms,
+        vat_percent=payload.vat_percent,
     )
     db.add(order)
     db.commit()
@@ -375,7 +404,10 @@ def create_sales_order(
     return schemas.SalesOrderOut(
         id=order.id, employee_id=order.employee_id, customer_name=order.customer_name,
         customer_contact=order.customer_contact, currency=order.currency, status=order.status,
-        note=order.note, created_at=order.created_at, updated_at=order.updated_at,
+        note=order.note, validity_days=order.validity_days, delivery_terms=order.delivery_terms,
+        downpayment_percent=order.downpayment_percent, payment_terms=order.payment_terms,
+        vat_percent=order.vat_percent,
+        created_at=order.created_at, updated_at=order.updated_at,
         line_items=[schemas.LineItemOut.model_validate(li) for li in line_items],
     )
 
@@ -397,10 +429,40 @@ def list_sales_orders(
         result.append(schemas.SalesOrderOut(
             id=order.id, employee_id=order.employee_id, customer_name=order.customer_name,
             customer_contact=order.customer_contact, currency=order.currency, status=order.status,
-            note=order.note, created_at=order.created_at, updated_at=order.updated_at,
+            note=order.note, validity_days=order.validity_days, delivery_terms=order.delivery_terms,
+            downpayment_percent=order.downpayment_percent, payment_terms=order.payment_terms,
+            vat_percent=order.vat_percent,
+            created_at=order.created_at, updated_at=order.updated_at,
             line_items=[schemas.LineItemOut.model_validate(li) for li in line_items],
         ))
     return result
+
+
+@app.put("/company/bank-details")
+def update_bank_details(
+    payload: schemas.CompanyBankDetailsUpdate,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    """Set once — reused on every generated document (Proforma, Invoice, etc.)."""
+    company.bank_details = payload.bank_details
+    db.add(company)
+    db.commit()
+    return {"status": "saved"}
+
+
+@app.put("/company/logo")
+def update_logo(
+    payload: schemas.CompanyLogoUpdate,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    """Set once — appears in the header of every generated document from now on."""
+    company.logo_image = payload.logo_image
+    company.logo_mime = payload.logo_mime
+    db.add(company)
+    db.commit()
+    return {"status": "saved"}
 
 
 @app.get("/sales-orders/{order_id}/document/proforma")
@@ -420,7 +482,8 @@ def download_proforma(
     ).all()
 
     pdf_bytes = documents.generate_document_pdf(
-        "PROFORMA INVOICE (QUOTE)", company.name, order, line_items
+        "PROFORMA INVOICE (QUOTE)", company.name, order, line_items, company.bank_details,
+        company.logo_image, company.logo_mime,
     )
 
     from fastapi.responses import Response

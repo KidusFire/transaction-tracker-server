@@ -19,6 +19,9 @@ class Company(Base):
     is_active = Column(Boolean, default=True)       # for suspending a delinquent/cancelled account later
     recovery_key_hash = Column(String, nullable=True)  # lets the owner reset a forgotten dashboard password
     trial_ends_at = Column(DateTime, nullable=True)    # free plan only — employee app is blocked after this date
+    bank_details = Column(Text, nullable=True)          # shown on generated documents, e.g. "Bank: CBE, Acct: 1000123456789"
+    logo_image = Column(Text, nullable=True)             # base64-encoded logo, shown in the header of generated documents
+    logo_mime = Column(String, nullable=True)             # e.g. "image/png"
     created_at = Column(DateTime, default=datetime.utcnow)
 
     transactions = relationship("Transaction", back_populates="company")
@@ -156,6 +159,11 @@ class SalesOrder(Base):
     currency = Column(String, default="USD")
     status = Column(String, default="proforma")  # proforma, confirmed, shipped, paid, testing, handover, final, credited
     note = Column(String, nullable=True)
+    validity_days = Column(Integer, default=30)          # how long the quote/proforma is valid
+    delivery_terms = Column(String, nullable=True)        # e.g. "30 days from order confirmation and downpayment"
+    downpayment_percent = Column(Float, nullable=True)    # e.g. 50.0 for 50% advance
+    payment_terms = Column(String, nullable=True)          # e.g. "50% advance, 50% on delivery"
+    vat_percent = Column(Float, default=15.0)               # Ethiopia standard is 15% — set to 0 for VAT-exempt orders
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 

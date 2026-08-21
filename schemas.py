@@ -65,6 +65,9 @@ class CompanyOut(BaseModel):
     plan: str
     currency: str
     trial_ends_at: Optional[datetime] = None
+    bank_details: Optional[str] = None
+    logo_image: Optional[str] = None
+    logo_mime: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -102,6 +105,11 @@ class SalesOrderCreate(BaseModel):
     customer_contact: Optional[str] = None
     currency: str = "USD"
     note: Optional[str] = None
+    validity_days: int = 30
+    delivery_terms: Optional[str] = None
+    downpayment_percent: Optional[float] = None
+    payment_terms: Optional[str] = None
+    vat_percent: float = 15.0
     line_items: List[LineItemCreate]
 
 
@@ -123,12 +131,26 @@ class SalesOrderOut(BaseModel):
     currency: str
     status: str
     note: Optional[str]
+    validity_days: int
+    delivery_terms: Optional[str]
+    downpayment_percent: Optional[float]
+    payment_terms: Optional[str]
+    vat_percent: float = 15.0
     created_at: datetime
     updated_at: datetime
     line_items: List[LineItemOut] = []
 
     class Config:
         from_attributes = True
+
+
+class CompanyBankDetailsUpdate(BaseModel):
+    bank_details: str
+
+
+class CompanyLogoUpdate(BaseModel):
+    logo_image: str    # base64-encoded
+    logo_mime: str      # e.g. "image/png"
 
 
 class EmployeeCreate(BaseModel):

@@ -4,31 +4,61 @@ as actual downloadable PDFs, using reportlab (pure Python, no system dependencie
 """
 
 import io
+import base64
 from datetime import datetime
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_RIGHT
+from reportlab.lib.enums import TA_RIGHT, TA_LEFT
 
 
-def generate_document_pdf(doc_type_label: str, company_name: str, order, line_items) -> bytes:
+def generate_document_pdf(doc_type_label: str, company_name: str, order, line_items,
+                           bank_details: str = None, logo_base64: str = None, logo_mime: str = None) -> bytes:
     """
     doc_type_label: what to print at the top, e.g. "PROFORMA INVOICE (QUOTE)", "SALES INVOICE"
     order: a SalesOrder ORM object
     line_items: list of SalesOrderLineItem ORM objects
+    bank_details: the company's saved bank/payment info, shown at the bottom if provided
+    logo_base64 / logo_mime: the company's uploaded logo, shown in the header if provided
     Returns raw PDF bytes.
     """
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=20 * mm, bottomMargin=20 * mm)
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=15 * mm, bottomMargin=20 * mm)
     styles = getSampleStyleSheet()
     right_style = ParagraphStyle("right", parent=styles["Normal"], alignment=TA_RIGHT)
 
     elements = []
 
-    elements.append(Paragraph(f"<b>{company_name}</b>", styles["Title"]))
-    elements.append(Paragraph(doc_type_label, styles["Heading2"]))
+    # --- Letterhead: logo (if set) alongside company name + document type ---
+    name_block = [
+        Paragraph(f"<b>{company_name}</b>", styles["Title"]),
+        Paragraph(doc_type_label, styles["Heading2"]),
+    ]
+
+    if logo_base64:
+        try:
+            logo_bytes = base64.b64decode(logo_base64)
+            logo_img = Image(io.BytesIO(logo_bytes))
+            # Scale to a sensible header size while keeping proportions
+            max_width, max_height = 35 * mm, 25 * mm
+            ratio = min(max_width / logo_img.imageWidth, max_height / logo_img.imageHeight)
+            logo_img.drawWidth = logo_img.imageWidth * ratio
+            logo_img.drawHeight = logo_img.imageHeight * ratio
+
+            header_table = Table([[logo_img, name_block]], colWidths=[40 * mm, 130 * mm])
+            header_table.setStyle(TableStyle([
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (0, 0), (0, 0), "LEFT"),
+            ]))
+            elements.append(header_table)
+        except Exception:
+            # If the logo fails to decode/render for any reason, fall back to text-only header
+            elements.extend(name_block)
+    else:
+        elements.extend(name_block)
+
     elements.append(Spacer(1, 10 * mm))
 
     meta = [
@@ -48,31 +78,72 @@ def generate_document_pdf(doc_type_label: str, company_name: str, order, line_it
     elements.append(Spacer(1, 8 * mm))
 
     rows = [["Description", "Qty", "Unit Price", "Line Total"]]
-    total = 0
+    subtotal = 0
     for item in line_items:
         line_total = item.quantity * item.unit_price
-        total += line_total
+        subtotal += line_total
         rows.append([item.description, f"{item.quantity:g}", f"{item.unit_price:,.2f}", f"{line_total:,.2f}"])
-    rows.append(["", "", "TOTAL", f"{total:,.2f} {order.currency}"])
+
+    vat_percent = getattr(order, "vat_percent", 15.0) or 0
+    vat_amount = subtotal * (vat_percent / 100)
+    grand_total = subtotal + vat_amount
+
+    rows.append(["", "", "Subtotal (before VAT):", f"{subtotal:,.2f}"])
+    if vat_percent:
+        rows.append(["", "", f"VAT ({vat_percent:g}%):", f"{vat_amount:,.2f}"])
+    rows.append(["", "", "TOTAL (after VAT):", f"{grand_total:,.2f} {order.currency}"])
 
     item_table = Table(rows, colWidths=[80 * mm, 20 * mm, 35 * mm, 35 * mm])
-    item_table.setStyle(TableStyle([
+    style_commands = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTNAME", (2, -1), (-1, -1), "Helvetica-Bold"),
         ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
-        ("GRID", (0, 0), (-1, -2), 0.5, colors.HexColor("#dddddd")),
-        ("LINEABOVE", (0, -1), (-1, -1), 1, colors.black),
+        ("GRID", (0, 0), (-1, len(line_items)), 0.5, colors.HexColor("#dddddd")),
+        ("LINEABOVE", (0, len(line_items) + 1), (-1, len(line_items) + 1), 1, colors.black),
+        ("FONTNAME", (2, -1), (-1, -1), "Helvetica-Bold"),
         ("FONTSIZE", (0, 0), (-1, -1), 10),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
         ("TOPPADDING", (0, 0), (-1, -1), 6),
-    ]))
+    ]
+    item_table.setStyle(TableStyle(style_commands))
     elements.append(item_table)
 
-    if order.note:
+    # Commercial terms — validity, delivery, downpayment, payment terms
+    terms_rows = []
+    if getattr(order, "validity_days", None):
+        terms_rows.append(["Quote Validity:", f"{order.validity_days} days from the date above"])
+    if getattr(order, "delivery_terms", None):
+        terms_rows.append(["Delivery:", order.delivery_terms])
+    if getattr(order, "downpayment_percent", None):
+        downpayment_amount = grand_total * (order.downpayment_percent / 100)
+        terms_rows.append([
+            "Downpayment Required:",
+            f"{order.downpayment_percent:g}% ({downpayment_amount:,.2f} {order.currency})"
+        ])
+    if getattr(order, "payment_terms", None):
+        terms_rows.append(["Payment Terms:", order.payment_terms])
+
+    if terms_rows:
         elements.append(Spacer(1, 8 * mm))
+        elements.append(Paragraph("<b>Commercial Terms</b>", styles["Heading4"]))
+        terms_table = Table(terms_rows, colWidths=[45 * mm, 110 * mm])
+        terms_table.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ]))
+        elements.append(terms_table)
+
+    if order.note:
+        elements.append(Spacer(1, 6 * mm))
         elements.append(Paragraph(f"<b>Note:</b> {order.note}", styles["Normal"]))
+
+    if bank_details:
+        elements.append(Spacer(1, 8 * mm))
+        elements.append(Paragraph("<b>Payment Details</b>", styles["Heading4"]))
+        elements.append(Paragraph(bank_details.replace("\n", "<br/>"), styles["Normal"]))
 
     elements.append(Spacer(1, 15 * mm))
     elements.append(Paragraph("Designed & Developed by Tesfaye Alemayehu", styles["Normal"]))

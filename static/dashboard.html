@@ -100,6 +100,30 @@
     <div id="billing-error" style="color:#c0392b; font-size:13px; margin-top:10px;"></div>
   </div>
 
+  <h2>Company Logo</h2>
+  <div style="background:white; border-radius:8px; padding:16px; margin-bottom:20px;">
+    <div style="font-size:13px; color:#666; margin-bottom:10px;">
+      Appears in the header of every generated document (Proforma, Invoice, etc.). PNG or JPEG, keep it reasonably small.
+    </div>
+    <div id="logo-preview-wrap" style="display:none; margin-bottom:12px;">
+      <img id="logo-preview" style="max-height:80px; max-width:200px; display:block; border:1px solid #eee; border-radius:6px; padding:6px;">
+    </div>
+    <input type="file" id="logo-file-input" accept="image/png,image/jpeg">
+    <button onclick="uploadLogo()" style="margin-left:10px; padding:8px 16px; background:#2c3e50; color:white; border:none; border-radius:6px; cursor:pointer;">Upload Logo</button>
+    <div id="logo-status" style="color:#2e8b57; font-size:13px; margin-top:8px; display:none;">Saved.</div>
+    <div id="logo-error" style="color:#c0392b; font-size:13px; margin-top:8px; display:none;"></div>
+  </div>
+
+  <h2>Bank / Payment Details</h2>
+  <div style="background:white; border-radius:8px; padding:16px; margin-bottom:20px;">
+    <div style="font-size:13px; color:#666; margin-bottom:10px;">
+      Shown on every generated document (Proforma, Invoice, etc.) so customers know where to pay.
+    </div>
+    <textarea id="bank-details-input" placeholder="e.g. Bank: Commercial Bank of Ethiopia&#10;Account Name: Kidus Fire IT Solution&#10;Account Number: 1000123456789&#10;Branch: Bole" style="width:100%; min-height:80px; padding:10px; border:1px solid #ddd; border-radius:6px; font-family:inherit; font-size:14px; box-sizing:border-box;"></textarea>
+    <button onclick="saveBankDetails()" style="margin-top:10px; padding:8px 16px; background:#2c3e50; color:white; border:none; border-radius:6px; cursor:pointer;">Save</button>
+    <div id="bank-details-status" style="color:#2e8b57; font-size:13px; margin-top:8px; display:none;">Saved.</div>
+  </div>
+
   <h2 data-i18n="account_recovery">Account Recovery</h2>
   <div style="background:white; border-radius:8px; padding:16px; margin-bottom:20px;">
     <div style="font-size:13px; color:#666; margin-bottom:10px;" data-i18n="recovery_explanation">
@@ -175,7 +199,7 @@
   <h2>Sales Orders</h2>
   <input type="text" id="so-search" class="search-box" placeholder="Search by customer or employee...">
   <table>
-    <thead><tr><th>Order #</th><th>Customer</th><th>Contact</th><th>Employee</th><th>Total</th><th>Currency</th><th>Status</th><th>Created</th><th>Documents</th></tr></thead>
+    <thead><tr><th>Order #</th><th>Customer</th><th>Contact</th><th>Employee</th><th>Total (incl. VAT)</th><th>Currency</th><th>Status</th><th>Created</th><th>Documents</th></tr></thead>
     <tbody id="so-body"></tbody>
   </table>
 
@@ -684,13 +708,14 @@
           const haystack = `${o.customer_name} ${o.employee_id}`.toLowerCase();
           if (filter && !haystack.includes(filter)) return;
 
-          const total = o.line_items.reduce((sum, li) => sum + (li.quantity * li.unit_price), 0);
+          const subtotal = o.line_items.reduce((sum, li) => sum + (li.quantity * li.unit_price), 0);
+          const grandTotal = subtotal * (1 + (o.vat_percent || 0) / 100);
           const created = new Date(o.created_at).toLocaleString();
 
           const row = document.createElement("tr");
           row.innerHTML = `
             <td>SO-${o.id}</td><td>${o.customer_name}</td><td>${o.customer_contact || ""}</td>
-            <td>${o.employee_id}</td><td>${fmt(total, o.currency)}</td><td>${o.currency}</td>
+            <td>${o.employee_id}</td><td>${fmt(grandTotal, o.currency)}</td><td>${o.currency}</td>
             <td>${o.status}</td><td>${created}</td>
             <td><a href="/sales-orders/${o.id}/document/proforma" target="_blank" style="cursor:pointer;">📄 Proforma</a></td>`;
           bodyEl.appendChild(row);
@@ -883,6 +908,65 @@
       URL.revokeObjectURL(url);
     }
 
+    async function uploadLogo() {
+      const errorEl = document.getElementById("logo-error");
+      const statusEl = document.getElementById("logo-status");
+      errorEl.style.display = "none";
+      statusEl.style.display = "none";
+
+      const fileInput = document.getElementById("logo-file-input");
+      const file = fileInput.files[0];
+      if (!file) {
+        errorEl.textContent = "Choose an image file first.";
+        errorEl.style.display = "block";
+        return;
+      }
+      if (file.size > 2 * 1024 * 1024) {
+        errorEl.textContent = "Please choose a smaller image (under 2MB).";
+        errorEl.style.display = "block";
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = reader.result.split(",")[1];
+        const res = await fetch("/company/logo", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", "Authorization": authHeader },
+          body: JSON.stringify({ logo_image: base64, logo_mime: file.type })
+        });
+        if (!res.ok) {
+          errorEl.textContent = "Failed to upload logo.";
+          errorEl.style.display = "block";
+          return;
+        }
+        statusEl.style.display = "block";
+        showLogoPreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function showLogoPreview(dataUrl) {
+      document.getElementById("logo-preview").src = dataUrl;
+      document.getElementById("logo-preview-wrap").style.display = "block";
+    }
+
+    async function saveBankDetails() {
+      const value = document.getElementById("bank-details-input").value;
+      const res = await fetch("/company/bank-details", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": authHeader },
+        body: JSON.stringify({ bank_details: value })
+      });
+      if (!res.ok) {
+        alert("Failed to save bank details.");
+        return;
+      }
+      const statusEl = document.getElementById("bank-details-status");
+      statusEl.style.display = "block";
+      setTimeout(() => { statusEl.style.display = "none"; }, 2500);
+    }
+
     async function upgradePlan(plan) {
       const errorEl = document.getElementById("billing-error");
       errorEl.textContent = "";
@@ -976,6 +1060,10 @@
       currency = company.currency || "USD";
       document.querySelector("h1").textContent = `Live Dashboard — ${company.name}`;
       document.getElementById("current-plan-label").textContent = company.plan.charAt(0).toUpperCase() + company.plan.slice(1);
+      document.getElementById("bank-details-input").value = company.bank_details || "";
+      if (company.logo_image && company.logo_mime) {
+        showLogoPreview(`data:${company.logo_mime};base64,${company.logo_image}`);
+      }
 
       if (company.trial_ends_at) {
         const banner = document.getElementById("trial-banner");
