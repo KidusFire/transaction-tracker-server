@@ -438,6 +438,43 @@ def list_sales_orders(
     return result
 
 
+@app.put("/sales-orders/{order_id}/confirm", response_model=schemas.SalesOrderOut)
+async def confirm_sales_order(
+    order_id: int,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    """Owner-only: moves an order from 'proforma' (quote) to 'confirmed' (firm order),
+    which unlocks the Sales Invoice document — the second stage of the paper trail."""
+    order = db.query(models.SalesOrder).filter(
+        models.SalesOrder.id == order_id, models.SalesOrder.company_id == company.id
+    ).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+    if order.status != "proforma":
+        raise HTTPException(status_code=400, detail=f"Order is already '{order.status}', not a proforma awaiting confirmation")
+
+    order.status = "confirmed"
+    order.updated_at = datetime.utcnow()
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+
+    line_items = db.query(models.SalesOrderLineItem).filter(models.SalesOrderLineItem.sales_order_id == order.id).all()
+
+    await manager.broadcast_to_company(company.id, {"kind": "sales_orders_changed"})
+
+    return schemas.SalesOrderOut(
+        id=order.id, employee_id=order.employee_id, customer_name=order.customer_name,
+        customer_contact=order.customer_contact, currency=order.currency, status=order.status,
+        note=order.note, validity_days=order.validity_days, delivery_terms=order.delivery_terms,
+        downpayment_percent=order.downpayment_percent, payment_terms=order.payment_terms,
+        vat_percent=order.vat_percent,
+        created_at=order.created_at, updated_at=order.updated_at,
+        line_items=[schemas.LineItemOut.model_validate(li) for li in line_items],
+    )
+
+
 @app.put("/company/bank-details")
 def update_bank_details(
     payload: schemas.CompanyBankDetailsUpdate,
@@ -492,6 +529,38 @@ def download_proforma(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="Proforma_SO-{order.id}.pdf"'}
     )
+
+
+@app.get("/sales-orders/{order_id}/document/invoice")
+def download_invoice(
+    order_id: int,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    order = db.query(models.SalesOrder).filter(
+        models.SalesOrder.id == order_id, models.SalesOrder.company_id == company.id
+    ).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+    if order.status == "proforma":
+        raise HTTPException(status_code=400, detail="Confirm this order first — an Invoice is only available once it's a firm order")
+
+    line_items = db.query(models.SalesOrderLineItem).filter(
+        models.SalesOrderLineItem.sales_order_id == order.id
+    ).all()
+
+    pdf_bytes = documents.generate_document_pdf(
+        "SALES INVOICE", company.name, order, line_items, company.bank_details,
+        company.logo_image, company.logo_mime,
+    )
+
+    from fastapi.responses import Response
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="Invoice_SO-{order.id}.pdf"'}
+    )
+
 
 @app.post("/employees", response_model=schemas.EmployeeOut)
 def create_employee(

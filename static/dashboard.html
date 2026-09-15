@@ -182,6 +182,13 @@
     <tbody id="far-body"></tbody>
   </table>
 
+  <h2>Sales Orders</h2>
+  <input type="text" id="so-search" class="search-box" placeholder="Search by customer or employee...">
+  <table>
+    <thead><tr><th>Order #</th><th>Customer</th><th>Contact</th><th>Employee</th><th>Total (incl. VAT)</th><th>Currency</th><th>Status</th><th>Created</th><th>Documents</th><th></th></tr></thead>
+    <tbody id="so-body"></tbody>
+  </table>
+
   <h2 data-i18n="requisitions_title">Requisitions (Store → Process → Final Product)</h2>
   <input type="text" id="req-search" class="search-box" data-i18n-placeholder="search_req" placeholder="Search by item, employee, or product reference...">
   <table>
@@ -194,13 +201,6 @@
   <table>
     <thead><tr><th data-i18n="time">Time</th><th data-i18n="item">Item</th><th data-i18n="employee">Employee</th><th data-i18n="direction">Direction</th><th data-i18n="qty">Qty</th><th data-i18n="new_qty_on_hand">New Qty on Hand</th><th data-i18n="reason">Reason</th></tr></thead>
     <tbody id="movement-body"></tbody>
-  </table>
-
-  <h2>Sales Orders</h2>
-  <input type="text" id="so-search" class="search-box" placeholder="Search by customer or employee...">
-  <table>
-    <thead><tr><th>Order #</th><th>Customer</th><th>Contact</th><th>Employee</th><th>Total (incl. VAT)</th><th>Currency</th><th>Status</th><th>Created</th><th>Documents</th></tr></thead>
-    <tbody id="so-body"></tbody>
   </table>
 
   <script>
@@ -359,8 +359,6 @@
       return `${cur || currency} ${n}`;
     }
 
-    // Renders a {currency: amount} map as stacked lines in a summary card,
-    // e.g. "USD 100" on one line and "ETB 500" on the next — never added together.
     function renderCurrencyLines(elId, amountsByCurrency) {
       const el = document.getElementById(elId);
       const entries = Object.entries(amountsByCurrency);
@@ -369,6 +367,21 @@
         return;
       }
       el.innerHTML = entries.map(([cur, amt]) => fmt(amt, cur)).join("<br>");
+    }
+
+    function calcDepreciation(item) {
+      if (!item.acquisition_date || !item.useful_life_years || item.useful_life_years <= 0) {
+        return { accumulated: null, bookValue: item.unit_cost || 0 };
+      }
+      const cost = item.unit_cost || 0;
+      const salvage = item.salvage_value || 0;
+      const acquired = new Date(item.acquisition_date);
+      const now = new Date();
+      const yearsElapsed = (now - acquired) / (1000 * 60 * 60 * 24 * 365.25);
+      const fractionUsed = Math.min(Math.max(yearsElapsed / item.useful_life_years, 0), 1);
+      const accumulated = (cost - salvage) * fractionUsed;
+      const bookValue = cost - accumulated;
+      return { accumulated, bookValue };
     }
 
     function updateSummary() {
@@ -479,8 +492,6 @@
         alert("Failed to update transaction.");
         return;
       }
-      // The server broadcasts "transactions_changed" back over the WebSocket,
-      // which triggers reloadTransactions() — no need to call it here too.
     }
 
     async function deleteTransaction(id) {
@@ -507,22 +518,6 @@
       const transactions = await fetch("/transactions", opts).then(r => r.json());
       transactions.forEach(tx => { allTransactions[tx.id] = tx; });
       renderTransactionsTable();
-    }
-
-    function calcDepreciation(item) {
-      // Straight-line depreciation: (cost - salvage) spread evenly over useful_life_years.
-      if (!item.acquisition_date || !item.useful_life_years || item.useful_life_years <= 0) {
-        return { accumulated: null, bookValue: item.unit_cost || 0 };
-      }
-      const cost = item.unit_cost || 0;
-      const salvage = item.salvage_value || 0;
-      const acquired = new Date(item.acquisition_date);
-      const now = new Date();
-      const yearsElapsed = (now - acquired) / (1000 * 60 * 60 * 24 * 365.25);
-      const fractionUsed = Math.min(Math.max(yearsElapsed / item.useful_life_years, 0), 1);
-      const accumulated = (cost - salvage) * fractionUsed;
-      const bookValue = cost - accumulated;
-      return { accumulated, bookValue };
     }
 
     function renderInventoryTable() {
@@ -686,8 +681,6 @@
 
     document.getElementById("move-search").addEventListener("input", renderMovementsTable);
 
-    let allRequisitions = {};
-
     let allSalesOrders = {};
 
     async function loadSalesOrders() {
@@ -712,17 +705,44 @@
           const grandTotal = subtotal * (1 + (o.vat_percent || 0) / 100);
           const created = new Date(o.created_at).toLocaleString();
 
+          const docsCell = o.status === "proforma"
+            ? `<a href="/sales-orders/${o.id}/document/proforma" target="_blank">📄 Proforma</a>`
+            : `<a href="/sales-orders/${o.id}/document/proforma" target="_blank">📄 Proforma</a> · <a href="/sales-orders/${o.id}/document/invoice" target="_blank">📄 Invoice</a>`;
+
+          const actionCell = o.status === "proforma"
+            ? `<button onclick="confirmOrder(${o.id})" style="cursor:pointer;">Confirm Order</button>`
+            : "";
+
           const row = document.createElement("tr");
           row.innerHTML = `
             <td>SO-${o.id}</td><td>${o.customer_name}</td><td>${o.customer_contact || ""}</td>
             <td>${o.employee_id}</td><td>${fmt(grandTotal, o.currency)}</td><td>${o.currency}</td>
             <td>${o.status}</td><td>${created}</td>
-            <td><a href="/sales-orders/${o.id}/document/proforma" target="_blank" style="cursor:pointer;">📄 Proforma</a></td>`;
+            <td>${docsCell}</td>
+            <td>${actionCell}</td>`;
           bodyEl.appendChild(row);
         });
     }
 
     document.getElementById("so-search").addEventListener("input", renderSalesOrdersTable);
+
+    async function confirmOrder(id) {
+      if (!confirm("Confirm this order? This turns the quote into a firm order and unlocks the Sales Invoice.")) return;
+
+      const res = await fetch(`/sales-orders/${id}/confirm`, {
+        method: "PUT",
+        headers: { "Authorization": authHeader }
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.detail || "Failed to confirm order.");
+        return;
+      }
+      // Server broadcasts "sales_orders_changed" back over the WebSocket, which reloads this table.
+    }
+
+    let allRequisitions = {};
 
     async function loadRequisitions() {
       const opts = { headers: { "Authorization": authHeader } };
@@ -790,7 +810,6 @@
         alert(data.detail || "Failed to update requisition.");
         return;
       }
-      // Server broadcasts "requisitions_changed" back over the WebSocket, which reloads this table.
     }
 
     async function deleteRequisition(id) {
@@ -806,7 +825,6 @@
         alert(data.detail || "Failed to delete requisition.");
         return;
       }
-      // Server broadcasts "requisitions_changed" and "stock_movement" — both tables update live.
     }
 
     let lastReportData = null;
@@ -1135,6 +1153,8 @@
           reloadTransactions();
         } else if (msg.kind === "requisitions_changed") {
           loadRequisitions();
+        } else if (msg.kind === "sales_orders_changed") {
+          loadSalesOrders();
         } else if (msg.kind === "plan_changed") {
           location.reload();  // simplest way to refresh plan label, trial banner, and limits everywhere
         }
