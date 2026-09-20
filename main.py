@@ -426,6 +426,9 @@ def list_sales_orders(
         line_items = db.query(models.SalesOrderLineItem).filter(
             models.SalesOrderLineItem.sales_order_id == order.id
         ).all()
+        payments = db.query(models.SalesOrderPayment).filter(
+            models.SalesOrderPayment.sales_order_id == order.id
+        ).order_by(models.SalesOrderPayment.created_at).all()
         result.append(schemas.SalesOrderOut(
             id=order.id, employee_id=order.employee_id, customer_name=order.customer_name,
             customer_contact=order.customer_contact, currency=order.currency, status=order.status,
@@ -434,6 +437,7 @@ def list_sales_orders(
             vat_percent=order.vat_percent,
             created_at=order.created_at, updated_at=order.updated_at,
             line_items=[schemas.LineItemOut.model_validate(li) for li in line_items],
+            payments=[schemas.PaymentOut.model_validate(p) for p in payments],
         ))
     return result
 
@@ -510,6 +514,9 @@ async def ship_sales_order(
         created_at=order.created_at, updated_at=order.updated_at,
         line_items=[schemas.LineItemOut.model_validate(li) for li in line_items],
     )
+
+
+@app.put("/company/bank-details")
 def update_bank_details(
     payload: schemas.CompanyBankDetailsUpdate,
     db: Session = Depends(get_db),
@@ -624,6 +631,93 @@ def download_delivery_note(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="DeliveryNote_SO-{order.id}.pdf"'}
+    )
+
+
+@app.post("/sales-orders/{order_id}/payments", response_model=schemas.PaymentOut)
+async def record_payment(
+    order_id: int,
+    payload: schemas.PaymentCreate,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    """Owner-only. Payments can arrive at any point once an order is a firm order (not
+    a proforma) — e.g. a downpayment before shipping, then the balance after. The order's
+    status automatically advances to 'paid' once total payments cover the full amount."""
+    order = db.query(models.SalesOrder).filter(
+        models.SalesOrder.id == order_id, models.SalesOrder.company_id == company.id
+    ).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+    if order.status == "proforma":
+        raise HTTPException(status_code=400, detail="Confirm this order first — payments can only be recorded against a firm order")
+    if payload.amount <= 0:
+        raise HTTPException(status_code=400, detail="Payment amount must be greater than zero")
+
+    payment = models.SalesOrderPayment(
+        sales_order_id=order.id, amount=payload.amount, method=payload.method,
+        reference=payload.reference, note=payload.note, received_by=company.dashboard_username,
+    )
+    db.add(payment)
+
+    line_items = db.query(models.SalesOrderLineItem).filter(models.SalesOrderLineItem.sales_order_id == order.id).all()
+    subtotal = sum(li.quantity * li.unit_price for li in line_items)
+    grand_total = subtotal * (1 + (order.vat_percent or 0) / 100)
+
+    existing_payments = db.query(models.SalesOrderPayment).filter(models.SalesOrderPayment.sales_order_id == order.id).all()
+    total_paid = sum(p.amount for p in existing_payments) + payload.amount
+
+    if total_paid >= grand_total and order.status in ("confirmed", "shipped"):
+        order.status = "paid"
+        order.updated_at = datetime.utcnow()
+        db.add(order)
+
+    db.commit()
+    db.refresh(payment)
+
+    await manager.broadcast_to_company(company.id, {"kind": "sales_orders_changed"})
+
+    return payment
+
+
+@app.get("/sales-orders/{order_id}/payments/{payment_id}/document/receipt")
+def download_payment_receipt(
+    order_id: int,
+    payment_id: int,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    order = db.query(models.SalesOrder).filter(
+        models.SalesOrder.id == order_id, models.SalesOrder.company_id == company.id
+    ).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+
+    payment = db.query(models.SalesOrderPayment).filter(
+        models.SalesOrderPayment.id == payment_id, models.SalesOrderPayment.sales_order_id == order.id
+    ).first()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    line_items = db.query(models.SalesOrderLineItem).filter(models.SalesOrderLineItem.sales_order_id == order.id).all()
+    subtotal = sum(li.quantity * li.unit_price for li in line_items)
+    grand_total = subtotal * (1 + (order.vat_percent or 0) / 100)
+
+    all_payments = db.query(models.SalesOrderPayment).filter(
+        models.SalesOrderPayment.sales_order_id == order.id
+    ).order_by(models.SalesOrderPayment.created_at).all()
+    total_paid_up_to_this_one = sum(p.amount for p in all_payments if p.created_at <= payment.created_at)
+
+    pdf_bytes = documents.generate_receipt_pdf(
+        company.name, order, payment, total_paid_up_to_this_one, grand_total,
+        company.logo_image, company.logo_mime,
+    )
+
+    from fastapi.responses import Response
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="Receipt_SO-{order.id}-{payment.id}.pdf"'}
     )
 
 

@@ -703,26 +703,42 @@
 
           const subtotal = o.line_items.reduce((sum, li) => sum + (li.quantity * li.unit_price), 0);
           const grandTotal = subtotal * (1 + (o.vat_percent || 0) / 100);
+          const totalPaid = (o.payments || []).reduce((sum, p) => sum + p.amount, 0);
+          const balanceRemaining = grandTotal - totalPaid;
           const created = new Date(o.created_at).toLocaleString();
+
+          const receiptLinks = (o.payments || []).map((p, i) =>
+            `<a href="/sales-orders/${o.id}/payments/${p.id}/document/receipt" target="_blank">📄 Receipt #${i + 1}</a>`
+          );
 
           const docsCell = [
             `<a href="/sales-orders/${o.id}/document/proforma" target="_blank">📄 Proforma</a>`,
             o.status !== "proforma" ? `<a href="/sales-orders/${o.id}/document/invoice" target="_blank">📄 Invoice</a>` : null,
             (o.status !== "proforma" && o.status !== "confirmed") ? `<a href="/sales-orders/${o.id}/document/delivery-note" target="_blank">📄 Delivery Note</a>` : null,
+            ...receiptLinks,
           ].filter(Boolean).join(" · ");
 
-          let actionCell = "";
+          const actionButtons = [];
           if (o.status === "proforma") {
-            actionCell = `<button onclick="confirmOrder(${o.id})" style="cursor:pointer;">Confirm Order</button>`;
-          } else if (o.status === "confirmed") {
-            actionCell = `<button onclick="shipOrder(${o.id})" style="cursor:pointer;">Mark as Shipped</button>`;
+            actionButtons.push(`<button onclick="confirmOrder(${o.id})" style="cursor:pointer;">Confirm Order</button>`);
           }
+          if (o.status === "confirmed") {
+            actionButtons.push(`<button onclick="shipOrder(${o.id})" style="cursor:pointer;">Mark as Shipped</button>`);
+          }
+          if ((o.status === "confirmed" || o.status === "shipped") && balanceRemaining > 0.01) {
+            actionButtons.push(`<button onclick="recordPayment(${o.id})" style="cursor:pointer;">Record Payment</button>`);
+          }
+          const actionCell = actionButtons.join(" ");
+
+          const statusCell = totalPaid > 0 && balanceRemaining > 0.01
+            ? `${o.status} <span style="color:#888; font-size:12px;">(${fmt(totalPaid, o.currency)} / ${fmt(grandTotal, o.currency)} paid)</span>`
+            : o.status;
 
           const row = document.createElement("tr");
           row.innerHTML = `
             <td>SO-${o.id}</td><td>${o.customer_name}</td><td>${o.customer_contact || ""}</td>
             <td>${o.employee_id}</td><td>${fmt(grandTotal, o.currency)}</td><td>${o.currency}</td>
-            <td>${o.status}</td><td>${created}</td>
+            <td>${statusCell}</td><td>${created}</td>
             <td>${docsCell}</td>
             <td>${actionCell}</td>`;
           bodyEl.appendChild(row);
@@ -758,6 +774,44 @@
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         alert(data.detail || "Failed to mark order as shipped.");
+        return;
+      }
+      // Server broadcasts "sales_orders_changed" back over the WebSocket, which reloads this table.
+    }
+
+    async function recordPayment(id) {
+      const order = allSalesOrders[id];
+      if (!order) return;
+
+      const amountStr = prompt(`Amount received (${order.currency}):`);
+      if (!amountStr) return;
+      const amount = parseFloat(amountStr);
+      if (isNaN(amount) || amount <= 0) {
+        alert("Enter a valid amount greater than zero.");
+        return;
+      }
+
+      const method = prompt("Payment method (e.g. Bank transfer, Cash, Cheque):", "Bank transfer");
+      if (method === null) return;
+
+      const reference = prompt("Reference / transaction number (optional):", "");
+      if (reference === null) return;
+
+      const note = prompt("Note (optional):", "");
+      if (note === null) return;
+
+      const res = await fetch(`/sales-orders/${id}/payments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": authHeader },
+        body: JSON.stringify({
+          amount: amount, method: method.trim() || null,
+          reference: reference.trim() || null, note: note.trim() || null,
+        })
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.detail || "Failed to record payment.");
         return;
       }
       // Server broadcasts "sales_orders_changed" back over the WebSocket, which reloads this table.

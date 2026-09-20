@@ -123,6 +123,27 @@ class LineItemOut(BaseModel):
         from_attributes = True
 
 
+class PaymentCreate(BaseModel):
+    amount: float
+    method: Optional[str] = None
+    reference: Optional[str] = None
+    note: Optional[str] = None
+
+
+class PaymentOut(BaseModel):
+    id: int
+    sales_order_id: int
+    amount: float
+    method: Optional[str]
+    reference: Optional[str]
+    note: Optional[str]
+    received_by: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class SalesOrderOut(BaseModel):
     id: int
     employee_id: str
@@ -139,6 +160,7 @@ class SalesOrderOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     line_items: List[LineItemOut] = []
+    payments: List[PaymentOut] = []
 
     class Config:
         from_attributes = True

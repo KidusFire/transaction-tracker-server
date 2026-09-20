@@ -176,3 +176,20 @@ class SalesOrderLineItem(Base):
     description = Column(String)
     quantity = Column(Float)
     unit_price = Column(Float)
+
+
+class SalesOrderPayment(Base):
+    """
+    A single payment received against a sales order — an order can have several
+    (e.g. a downpayment, then a balance payment), each getting its own Payment Receipt PDF.
+    """
+    __tablename__ = "sales_order_payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sales_order_id = Column(Integer, ForeignKey("sales_orders.id"), index=True)
+    amount = Column(Float)
+    method = Column(String, nullable=True)       # e.g. "Bank transfer", "Cheque", "Cash"
+    reference = Column(String, nullable=True)     # e.g. transaction/cheque number
+    note = Column(String, nullable=True)
+    received_by = Column(String)                  # dashboard_username who recorded it
+    created_at = Column(DateTime, default=datetime.utcnow)

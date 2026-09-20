@@ -190,3 +190,102 @@ def generate_document_pdf(doc_type_label: str, company_name: str, order, line_it
 
     doc.build(elements)
     return buffer.getvalue()
+
+
+def generate_receipt_pdf(company_name: str, order, payment, total_paid_to_date: float,
+                          grand_total: float, logo_base64: str = None, logo_mime: str = None) -> bytes:
+    """
+    Generates a Payment Receipt for a single payment against a sales order — a company can
+    have several of these per order (e.g. a downpayment, then a balance payment).
+    """
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=15 * mm, bottomMargin=20 * mm)
+    styles = getSampleStyleSheet()
+
+    elements = []
+
+    name_block = [
+        Paragraph(f"<b>{company_name}</b>", styles["Title"]),
+        Paragraph("PAYMENT RECEIPT", styles["Heading2"]),
+    ]
+
+    if logo_base64:
+        try:
+            logo_bytes = base64.b64decode(logo_base64)
+            logo_img = Image(io.BytesIO(logo_bytes))
+            max_width, max_height = 35 * mm, 25 * mm
+            ratio = min(max_width / logo_img.imageWidth, max_height / logo_img.imageHeight)
+            logo_img.drawWidth = logo_img.imageWidth * ratio
+            logo_img.drawHeight = logo_img.imageHeight * ratio
+            header_table = Table([[logo_img, name_block]], colWidths=[40 * mm, 130 * mm])
+            header_table.setStyle(TableStyle([
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (0, 0), (0, 0), "LEFT"),
+            ]))
+            elements.append(header_table)
+        except Exception:
+            elements.extend(name_block)
+    else:
+        elements.extend(name_block)
+
+    elements.append(Spacer(1, 10 * mm))
+
+    balance_remaining = max(grand_total - total_paid_to_date, 0)
+
+    meta = [
+        ["Receipt #:", f"SO-{order.id}-P{payment.id}"],
+        ["Date:", payment.created_at.strftime("%Y-%m-%d")],
+        ["Customer:", order.customer_name],
+        ["Order Reference:", f"SO-{order.id}"],
+        ["Received By:", payment.received_by],
+    ]
+    meta_table = Table(meta, colWidths=[40 * mm, 115 * mm])
+    meta_table.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(meta_table)
+    elements.append(Spacer(1, 10 * mm))
+
+    payment_rows = [
+        ["Amount Received:", f"{payment.amount:,.2f} {order.currency}"],
+        ["Payment Method:", payment.method or "-"],
+        ["Reference / Transaction #:", payment.reference or "-"],
+    ]
+    payment_table = Table(payment_rows, colWidths=[55 * mm, 100 * mm])
+    payment_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eafaf1")),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 11),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#dddddd")),
+    ]))
+    elements.append(payment_table)
+    elements.append(Spacer(1, 10 * mm))
+
+    balance_rows = [
+        ["Order Total (incl. VAT):", f"{grand_total:,.2f} {order.currency}"],
+        ["Total Paid to Date:", f"{total_paid_to_date:,.2f} {order.currency}"],
+        ["Balance Remaining:", f"{balance_remaining:,.2f} {order.currency}"],
+    ]
+    balance_table = Table(balance_rows, colWidths=[55 * mm, 100 * mm])
+    balance_table.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTNAME", (1, -1), (1, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LINEABOVE", (0, -1), (-1, -1), 1, colors.black),
+    ]))
+    elements.append(balance_table)
+
+    if payment.note:
+        elements.append(Spacer(1, 8 * mm))
+        elements.append(Paragraph(f"<b>Note:</b> {payment.note}", styles["Normal"]))
+
+    elements.append(Spacer(1, 15 * mm))
+    elements.append(Paragraph("Designed & Developed by Tesfaye Alemayehu", styles["Normal"]))
+
+    doc.build(elements)
+    return buffer.getvalue()
