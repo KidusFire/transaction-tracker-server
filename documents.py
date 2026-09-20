@@ -24,6 +24,7 @@ def generate_document_pdf(doc_type_label: str, company_name: str, order, line_it
     logo_base64 / logo_mime: the company's uploaded logo, shown in the header if provided
     Returns raw PDF bytes.
     """
+    is_proforma = "PROFORMA" in doc_type_label.upper()
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=15 * mm, bottomMargin=20 * mm)
     styles = getSampleStyleSheet()
@@ -111,7 +112,7 @@ def generate_document_pdf(doc_type_label: str, company_name: str, order, line_it
 
     # Commercial terms — validity, delivery, downpayment, payment terms
     terms_rows = []
-    if getattr(order, "validity_days", None):
+    if is_proforma and getattr(order, "validity_days", None):
         terms_rows.append(["Quote Validity:", f"{order.validity_days} days from the date above"])
     if getattr(order, "delivery_terms", None):
         terms_rows.append(["Delivery:", order.delivery_terms])
