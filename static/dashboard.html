@@ -705,13 +705,18 @@
           const grandTotal = subtotal * (1 + (o.vat_percent || 0) / 100);
           const created = new Date(o.created_at).toLocaleString();
 
-          const docsCell = o.status === "proforma"
-            ? `<a href="/sales-orders/${o.id}/document/proforma" target="_blank">📄 Proforma</a>`
-            : `<a href="/sales-orders/${o.id}/document/proforma" target="_blank">📄 Proforma</a> · <a href="/sales-orders/${o.id}/document/invoice" target="_blank">📄 Invoice</a>`;
+          const docsCell = [
+            `<a href="/sales-orders/${o.id}/document/proforma" target="_blank">📄 Proforma</a>`,
+            o.status !== "proforma" ? `<a href="/sales-orders/${o.id}/document/invoice" target="_blank">📄 Invoice</a>` : null,
+            (o.status !== "proforma" && o.status !== "confirmed") ? `<a href="/sales-orders/${o.id}/document/delivery-note" target="_blank">📄 Delivery Note</a>` : null,
+          ].filter(Boolean).join(" · ");
 
-          const actionCell = o.status === "proforma"
-            ? `<button onclick="confirmOrder(${o.id})" style="cursor:pointer;">Confirm Order</button>`
-            : "";
+          let actionCell = "";
+          if (o.status === "proforma") {
+            actionCell = `<button onclick="confirmOrder(${o.id})" style="cursor:pointer;">Confirm Order</button>`;
+          } else if (o.status === "confirmed") {
+            actionCell = `<button onclick="shipOrder(${o.id})" style="cursor:pointer;">Mark as Shipped</button>`;
+          }
 
           const row = document.createElement("tr");
           row.innerHTML = `
@@ -737,6 +742,22 @@
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         alert(data.detail || "Failed to confirm order.");
+        return;
+      }
+      // Server broadcasts "sales_orders_changed" back over the WebSocket, which reloads this table.
+    }
+
+    async function shipOrder(id) {
+      if (!confirm("Mark this order as shipped? This unlocks the Delivery Note.")) return;
+
+      const res = await fetch(`/sales-orders/${id}/ship`, {
+        method: "PUT",
+        headers: { "Authorization": authHeader }
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.detail || "Failed to mark order as shipped.");
         return;
       }
       // Server broadcasts "sales_orders_changed" back over the WebSocket, which reloads this table.

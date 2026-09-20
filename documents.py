@@ -15,13 +15,16 @@ from reportlab.lib.enums import TA_RIGHT, TA_LEFT
 
 
 def generate_document_pdf(doc_type_label: str, company_name: str, order, line_items,
-                           bank_details: str = None, logo_base64: str = None, logo_mime: str = None) -> bytes:
+                           bank_details: str = None, logo_base64: str = None, logo_mime: str = None,
+                           is_delivery_note: bool = False) -> bytes:
     """
-    doc_type_label: what to print at the top, e.g. "PROFORMA INVOICE (QUOTE)", "SALES INVOICE"
+    doc_type_label: what to print at the top, e.g. "PROFORMA INVOICE (QUOTE)", "SALES INVOICE", "DELIVERY NOTE"
     order: a SalesOrder ORM object
     line_items: list of SalesOrderLineItem ORM objects
     bank_details: the company's saved bank/payment info, shown at the bottom if provided
     logo_base64 / logo_mime: the company's uploaded logo, shown in the header if provided
+    is_delivery_note: when True, prices/VAT are hidden (a delivery note proves goods were
+    delivered, it isn't a bill) and signature lines are added at the bottom instead.
     Returns raw PDF bytes.
     """
     is_proforma = "PROFORMA" in doc_type_label.upper()
@@ -78,56 +81,77 @@ def generate_document_pdf(doc_type_label: str, company_name: str, order, line_it
     elements.append(meta_table)
     elements.append(Spacer(1, 8 * mm))
 
-    rows = [["Description", "Qty", "Unit Price", "Line Total"]]
     subtotal = 0
     for item in line_items:
-        line_total = item.quantity * item.unit_price
-        subtotal += line_total
-        rows.append([item.description, f"{item.quantity:g}", f"{item.unit_price:,.2f}", f"{line_total:,.2f}"])
+        subtotal += item.quantity * item.unit_price
 
     vat_percent = getattr(order, "vat_percent", 15.0) or 0
     vat_amount = subtotal * (vat_percent / 100)
     grand_total = subtotal + vat_amount
 
-    rows.append(["", "", "Subtotal (before VAT):", f"{subtotal:,.2f}"])
-    if vat_percent:
-        rows.append(["", "", f"VAT ({vat_percent:g}%):", f"{vat_amount:,.2f}"])
-    rows.append(["", "", "TOTAL (after VAT):", f"{grand_total:,.2f} {order.currency}"])
+    if is_delivery_note:
+        # A delivery note proves goods were handed over — it's not a bill, so no prices.
+        rows = [["Description", "Qty Delivered"]]
+        for item in line_items:
+            rows.append([item.description, f"{item.quantity:g}"])
+        item_table = Table(rows, colWidths=[130 * mm, 40 * mm])
+        item_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#dddddd")),
+            ("FONTSIZE", (0, 0), (-1, -1), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ]))
+    else:
+        rows = [["Description", "Qty", "Unit Price", "Line Total"]]
+        for item in line_items:
+            line_total = item.quantity * item.unit_price
+            rows.append([item.description, f"{item.quantity:g}", f"{item.unit_price:,.2f}", f"{line_total:,.2f}"])
 
-    item_table = Table(rows, colWidths=[80 * mm, 20 * mm, 35 * mm, 35 * mm])
-    style_commands = [
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
-        ("GRID", (0, 0), (-1, len(line_items)), 0.5, colors.HexColor("#dddddd")),
-        ("LINEABOVE", (0, len(line_items) + 1), (-1, len(line_items) + 1), 1, colors.black),
-        ("FONTNAME", (2, -1), (-1, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-    ]
-    item_table.setStyle(TableStyle(style_commands))
+        rows.append(["", "", "Subtotal (before VAT):", f"{subtotal:,.2f}"])
+        if vat_percent:
+            rows.append(["", "", f"VAT ({vat_percent:g}%):", f"{vat_amount:,.2f}"])
+        rows.append(["", "", "TOTAL (after VAT):", f"{grand_total:,.2f} {order.currency}"])
+
+        item_table = Table(rows, colWidths=[80 * mm, 20 * mm, 35 * mm, 35 * mm])
+        style_commands = [
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+            ("GRID", (0, 0), (-1, len(line_items)), 0.5, colors.HexColor("#dddddd")),
+            ("LINEABOVE", (0, len(line_items) + 1), (-1, len(line_items) + 1), 1, colors.black),
+            ("FONTNAME", (2, -1), (-1, -1), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ]
+        item_table.setStyle(TableStyle(style_commands))
     elements.append(item_table)
 
-    # Commercial terms — validity, delivery, downpayment, payment terms
+    # Commercial terms — validity, delivery, downpayment, payment terms.
+    # A delivery note only cares about the delivery terms themselves, not pricing/quote terms.
     terms_rows = []
-    if is_proforma and getattr(order, "validity_days", None):
-        terms_rows.append(["Quote Validity:", f"{order.validity_days} days from the date above"])
+    if not is_delivery_note:
+        if is_proforma and getattr(order, "validity_days", None):
+            terms_rows.append(["Quote Validity:", f"{order.validity_days} days from the date above"])
+        if getattr(order, "downpayment_percent", None):
+            downpayment_amount = grand_total * (order.downpayment_percent / 100)
+            terms_rows.append([
+                "Downpayment Required:",
+                f"{order.downpayment_percent:g}% ({downpayment_amount:,.2f} {order.currency})"
+            ])
+        if getattr(order, "payment_terms", None):
+            terms_rows.append(["Payment Terms:", order.payment_terms])
     if getattr(order, "delivery_terms", None):
         terms_rows.append(["Delivery:", order.delivery_terms])
-    if getattr(order, "downpayment_percent", None):
-        downpayment_amount = grand_total * (order.downpayment_percent / 100)
-        terms_rows.append([
-            "Downpayment Required:",
-            f"{order.downpayment_percent:g}% ({downpayment_amount:,.2f} {order.currency})"
-        ])
-    if getattr(order, "payment_terms", None):
-        terms_rows.append(["Payment Terms:", order.payment_terms])
 
     if terms_rows:
         elements.append(Spacer(1, 8 * mm))
-        elements.append(Paragraph("<b>Commercial Terms</b>", styles["Heading4"]))
+        elements.append(Paragraph("<b>Commercial Terms</b>" if not is_delivery_note else "<b>Delivery Terms</b>", styles["Heading4"]))
         terms_table = Table(terms_rows, colWidths=[45 * mm, 110 * mm])
         terms_table.setStyle(TableStyle([
             ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
@@ -141,10 +165,25 @@ def generate_document_pdf(doc_type_label: str, company_name: str, order, line_it
         elements.append(Spacer(1, 6 * mm))
         elements.append(Paragraph(f"<b>Note:</b> {order.note}", styles["Normal"]))
 
-    if bank_details:
+    if bank_details and not is_delivery_note:
         elements.append(Spacer(1, 8 * mm))
         elements.append(Paragraph("<b>Payment Details</b>", styles["Heading4"]))
         elements.append(Paragraph(bank_details.replace("\n", "<br/>"), styles["Normal"]))
+
+    if is_delivery_note:
+        elements.append(Spacer(1, 20 * mm))
+        sig_rows = [
+            ["Delivered By:", "___________________________", "Date:", "______________"],
+            ["Received By:", "___________________________", "Date:", "______________"],
+        ]
+        sig_table = Table(sig_rows, colWidths=[30 * mm, 65 * mm, 20 * mm, 40 * mm])
+        sig_table.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+            ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 10),
+            ("TOPPADDING", (0, 0), (-1, -1), 14),
+        ]))
+        elements.append(sig_table)
 
     elements.append(Spacer(1, 15 * mm))
     elements.append(Paragraph("Designed & Developed by Tesfaye Alemayehu", styles["Normal"]))

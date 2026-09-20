@@ -475,7 +475,41 @@ async def confirm_sales_order(
     )
 
 
-@app.put("/company/bank-details")
+@app.put("/sales-orders/{order_id}/ship", response_model=schemas.SalesOrderOut)
+async def ship_sales_order(
+    order_id: int,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    """Owner-only: moves an order from 'confirmed' to 'shipped' once goods actually leave,
+    which unlocks the Delivery Note — the third stage of the paper trail."""
+    order = db.query(models.SalesOrder).filter(
+        models.SalesOrder.id == order_id, models.SalesOrder.company_id == company.id
+    ).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+    if order.status != "confirmed":
+        raise HTTPException(status_code=400, detail=f"Order must be 'confirmed' before it can be marked shipped (currently '{order.status}')")
+
+    order.status = "shipped"
+    order.updated_at = datetime.utcnow()
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+
+    line_items = db.query(models.SalesOrderLineItem).filter(models.SalesOrderLineItem.sales_order_id == order.id).all()
+
+    await manager.broadcast_to_company(company.id, {"kind": "sales_orders_changed"})
+
+    return schemas.SalesOrderOut(
+        id=order.id, employee_id=order.employee_id, customer_name=order.customer_name,
+        customer_contact=order.customer_contact, currency=order.currency, status=order.status,
+        note=order.note, validity_days=order.validity_days, delivery_terms=order.delivery_terms,
+        downpayment_percent=order.downpayment_percent, payment_terms=order.payment_terms,
+        vat_percent=order.vat_percent,
+        created_at=order.created_at, updated_at=order.updated_at,
+        line_items=[schemas.LineItemOut.model_validate(li) for li in line_items],
+    )
 def update_bank_details(
     payload: schemas.CompanyBankDetailsUpdate,
     db: Session = Depends(get_db),
@@ -559,6 +593,37 @@ def download_invoice(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="Invoice_SO-{order.id}.pdf"'}
+    )
+
+
+@app.get("/sales-orders/{order_id}/document/delivery-note")
+def download_delivery_note(
+    order_id: int,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    order = db.query(models.SalesOrder).filter(
+        models.SalesOrder.id == order_id, models.SalesOrder.company_id == company.id
+    ).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+    if order.status in ("proforma", "confirmed"):
+        raise HTTPException(status_code=400, detail="Mark this order as shipped first — a Delivery Note is only available once goods have gone out")
+
+    line_items = db.query(models.SalesOrderLineItem).filter(
+        models.SalesOrderLineItem.sales_order_id == order.id
+    ).all()
+
+    pdf_bytes = documents.generate_document_pdf(
+        "DELIVERY NOTE", company.name, order, line_items, company.bank_details,
+        company.logo_image, company.logo_mime, is_delivery_note=True,
+    )
+
+    from fastapi.responses import Response
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="DeliveryNote_SO-{order.id}.pdf"'}
     )
 
 
