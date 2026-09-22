@@ -991,6 +991,23 @@ def deactivate_employee(
     return {"status": "deactivated"}
 
 
+@app.put("/employees/{employee_id}/reactivate")
+def reactivate_employee(
+    employee_id: int,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    employee = db.query(models.Employee).filter(
+        models.Employee.id == employee_id, models.Employee.company_id == company.id
+    ).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    employee.active = True
+    db.add(employee)
+    db.commit()
+    return {"status": "reactivated"}
+
+
 # ============ WEBSOCKET MANAGER (scoped per company) ============
 
 class ConnectionManager:

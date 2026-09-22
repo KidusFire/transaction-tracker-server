@@ -1202,7 +1202,7 @@
         row.innerHTML = `
           <td>${emp.username}</td><td>${emp.full_name || ""}</td>
           <td>${emp.active ? "active" : "deactivated"}</td>
-          <td>${emp.active ? `<button onclick="removeEmployee(${emp.id})" style="cursor:pointer;">Deactivate</button>` : ""}</td>`;
+          <td>${emp.active ? `<button onclick="removeEmployee(${emp.id})" style="cursor:pointer;">Deactivate</button>` : `<button onclick="reactivateEmployee(${emp.id})" style="cursor:pointer;">Reactivate</button>`}</td>`;
         body.appendChild(row);
       });
     }
@@ -1239,6 +1239,11 @@
 
     async function removeEmployee(id) {
       await fetch(`/employees/${id}`, { method: "DELETE", headers: { "Authorization": authHeader } });
+      loadEmployees();
+    }
+
+    async function reactivateEmployee(id) {
+      await fetch(`/employees/${id}/reactivate`, { method: "PUT", headers: { "Authorization": authHeader } });
       loadEmployees();
     }
 
