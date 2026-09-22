@@ -710,12 +710,25 @@
           const receiptLinks = (o.payments || []).map((p, i) =>
             `<a href="/sales-orders/${o.id}/payments/${p.id}/document/receipt" target="_blank">📄 Receipt #${i + 1}</a>`
           );
+          const creditNoteLinks = (o.credit_notes || []).map((c, i) =>
+            `<a href="/sales-orders/${o.id}/credit-notes/${c.id}/document/credit-note" target="_blank">📄 Credit Note #${i + 1}</a>`
+          );
+
+          const stageOrder = ["proforma", "confirmed", "shipped", "paid", "testing", "handover", "final"];
+          const stageIndex = stageOrder.indexOf(o.status);
+          const reachedTesting = stageIndex >= stageOrder.indexOf("testing");
+          const reachedHandover = stageIndex >= stageOrder.indexOf("handover");
+          const reachedFinal = stageIndex >= stageOrder.indexOf("final");
 
           const docsCell = [
             `<a href="/sales-orders/${o.id}/document/proforma" target="_blank">📄 Proforma</a>`,
             o.status !== "proforma" ? `<a href="/sales-orders/${o.id}/document/invoice" target="_blank">📄 Invoice</a>` : null,
             (o.status !== "proforma" && o.status !== "confirmed") ? `<a href="/sales-orders/${o.id}/document/delivery-note" target="_blank">📄 Delivery Note</a>` : null,
             ...receiptLinks,
+            reachedTesting ? `<a href="/sales-orders/${o.id}/document/provisional-acceptance" target="_blank">📄 Provisional Acceptance</a>` : null,
+            reachedHandover ? `<a href="/sales-orders/${o.id}/document/warranty-certificate" target="_blank">📄 Warranty Certificate</a>` : null,
+            reachedFinal ? `<a href="/sales-orders/${o.id}/document/final-acceptance" target="_blank">📄 Final Acceptance</a>` : null,
+            ...creditNoteLinks,
           ].filter(Boolean).join(" · ");
 
           const actionButtons = [];
@@ -727,6 +740,18 @@
           }
           if ((o.status === "confirmed" || o.status === "shipped") && balanceRemaining > 0.01) {
             actionButtons.push(`<button onclick="recordPayment(${o.id})" style="cursor:pointer;">Record Payment</button>`);
+          }
+          if (o.status === "paid") {
+            actionButtons.push(`<button onclick="markTestingComplete(${o.id})" style="cursor:pointer;">Mark Testing Complete</button>`);
+          }
+          if (o.status === "testing") {
+            actionButtons.push(`<button onclick="markHandover(${o.id})" style="cursor:pointer;">Mark Handover</button>`);
+          }
+          if (o.status === "handover") {
+            actionButtons.push(`<button onclick="markFinalAcceptance(${o.id})" style="cursor:pointer;">Mark Final Acceptance</button>`);
+          }
+          if (o.status !== "proforma") {
+            actionButtons.push(`<button onclick="issueCreditNote(${o.id})" style="cursor:pointer;">Issue Credit Note</button>`);
           }
           const actionCell = actionButtons.join(" ");
 
@@ -812,6 +837,77 @@
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         alert(data.detail || "Failed to record payment.");
+        return;
+      }
+      // Server broadcasts "sales_orders_changed" back over the WebSocket, which reloads this table.
+    }
+
+    async function markTestingComplete(id) {
+      if (!confirm("Mark site testing complete? This unlocks the Provisional Acceptance Certificate.")) return;
+      const res = await fetch(`/sales-orders/${id}/mark-testing-complete`, {
+        method: "PUT",
+        headers: { "Authorization": authHeader }
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.detail || "Failed to mark testing complete.");
+        return;
+      }
+    }
+
+    async function markHandover(id) {
+      if (!confirm("Mark handover? This starts the warranty period and unlocks the Warranty Certificate.")) return;
+      const res = await fetch(`/sales-orders/${id}/mark-handover`, {
+        method: "PUT",
+        headers: { "Authorization": authHeader }
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.detail || "Failed to mark handover.");
+        return;
+      }
+    }
+
+    async function markFinalAcceptance(id) {
+      if (!confirm("Mark final acceptance? This confirms the trial period is complete and unlocks the Final Acceptance Certificate.")) return;
+      const res = await fetch(`/sales-orders/${id}/mark-final`, {
+        method: "PUT",
+        headers: { "Authorization": authHeader }
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.detail || "Failed to mark final acceptance.");
+        return;
+      }
+    }
+
+    async function issueCreditNote(id) {
+      const order = allSalesOrders[id];
+      if (!order) return;
+
+      const amountStr = prompt(`Amount to credit (${order.currency}):`);
+      if (!amountStr) return;
+      const amount = parseFloat(amountStr);
+      if (isNaN(amount) || amount <= 0) {
+        alert("Enter a valid amount greater than zero.");
+        return;
+      }
+
+      const reason = prompt("Reason for this credit note (required):");
+      if (!reason || !reason.trim()) {
+        alert("A reason is required for a credit note.");
+        return;
+      }
+
+      const res = await fetch(`/sales-orders/${id}/credit-notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": authHeader },
+        body: JSON.stringify({ amount: amount, reason: reason.trim() })
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.detail || "Failed to issue credit note.");
         return;
       }
       // Server broadcasts "sales_orders_changed" back over the WebSocket, which reloads this table.

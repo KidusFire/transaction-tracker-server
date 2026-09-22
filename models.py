@@ -164,6 +164,11 @@ class SalesOrder(Base):
     downpayment_percent = Column(Float, nullable=True)    # e.g. 50.0 for 50% advance
     payment_terms = Column(String, nullable=True)          # e.g. "50% advance, 50% on delivery"
     vat_percent = Column(Float, default=15.0)               # Ethiopia standard is 15% — set to 0 for VAT-exempt orders
+    warranty_months = Column(Integer, nullable=True, default=12)
+    shipped_at = Column(DateTime, nullable=True)
+    testing_completed_at = Column(DateTime, nullable=True)
+    handover_at = Column(DateTime, nullable=True)
+    final_accepted_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
@@ -192,4 +197,20 @@ class SalesOrderPayment(Base):
     reference = Column(String, nullable=True)     # e.g. transaction/cheque number
     note = Column(String, nullable=True)
     received_by = Column(String)                  # dashboard_username who recorded it
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SalesOrderCreditNote(Base):
+    """
+    A correction against a sales order — an overcharge, a return, a price adjustment.
+    Unlike the sequential document stages, this can be issued at any point once an
+    order is a firm order, not just at the end of the lifecycle.
+    """
+    __tablename__ = "sales_order_credit_notes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sales_order_id = Column(Integer, ForeignKey("sales_orders.id"), index=True)
+    amount = Column(Float)
+    reason = Column(String)
+    issued_by = Column(String)                     # dashboard_username who issued it
     created_at = Column(DateTime, default=datetime.utcnow)

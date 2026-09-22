@@ -289,3 +289,187 @@ def generate_receipt_pdf(company_name: str, order, payment, total_paid_to_date: 
 
     doc.build(elements)
     return buffer.getvalue()
+
+
+def generate_certificate_pdf(cert_type_label: str, company_name: str, order, line_items,
+                              logo_base64: str = None, logo_mime: str = None) -> bytes:
+    """
+    Generates one of the formal milestone certificates: Provisional Acceptance,
+    Warranty, or Final Acceptance. These read as a declarative statement rather
+    than an itemized bill — no pricing, just what was supplied and the relevant date(s).
+    """
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=15 * mm, bottomMargin=20 * mm)
+    styles = getSampleStyleSheet()
+    body_style = ParagraphStyle("body", parent=styles["Normal"], fontSize=11, leading=16, alignment=TA_LEFT)
+
+    elements = []
+
+    name_block = [
+        Paragraph(f"<b>{company_name}</b>", styles["Title"]),
+        Paragraph(cert_type_label, styles["Heading2"]),
+    ]
+
+    if logo_base64:
+        try:
+            logo_bytes = base64.b64decode(logo_base64)
+            logo_img = Image(io.BytesIO(logo_bytes))
+            max_width, max_height = 35 * mm, 25 * mm
+            ratio = min(max_width / logo_img.imageWidth, max_height / logo_img.imageHeight)
+            logo_img.drawWidth = logo_img.imageWidth * ratio
+            logo_img.drawHeight = logo_img.imageHeight * ratio
+            header_table = Table([[logo_img, name_block]], colWidths=[40 * mm, 130 * mm])
+            header_table.setStyle(TableStyle([
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (0, 0), (0, 0), "LEFT"),
+            ]))
+            elements.append(header_table)
+        except Exception:
+            elements.extend(name_block)
+    else:
+        elements.extend(name_block)
+
+    elements.append(Spacer(1, 10 * mm))
+
+    meta = [
+        ["Order Reference:", f"SO-{order.id}"],
+        ["Customer:", order.customer_name],
+        ["Date Issued:", datetime.utcnow().strftime("%Y-%m-%d")],
+    ]
+    meta_table = Table(meta, colWidths=[40 * mm, 115 * mm])
+    meta_table.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(meta_table)
+    elements.append(Spacer(1, 8 * mm))
+
+    item_desc = "; ".join(f"{item.description} (Qty: {item.quantity:g})" for item in line_items)
+
+    if cert_type_label == "PROVISIONAL ACCEPTANCE CERTIFICATE":
+        test_date = order.testing_completed_at.strftime("%Y-%m-%d") if order.testing_completed_at else "the date recorded"
+        statement = (
+            f"This is to certify that the following goods/equipment supplied under Order SO-{order.id} "
+            f"— {item_desc} — have been installed and tested at site on {test_date}, and found to be in "
+            f"good working order. This Provisional Acceptance is issued subject to Final Acceptance "
+            f"following the trial period specified in the contract between the parties."
+        )
+    elif cert_type_label == "WARRANTY CERTIFICATE":
+        handover_date = order.handover_at.strftime("%Y-%m-%d") if order.handover_at else "the date of handover"
+        months = order.warranty_months or 12
+        statement = (
+            f"This is to certify that the goods supplied under Order SO-{order.id} — {item_desc} — "
+            f"are warranted by {company_name} against defects in material and workmanship for a period "
+            f"of {months} months from the date of handover, {handover_date}. This warranty covers the "
+            f"repair or replacement of defective parts under normal use conditions, and excludes damage "
+            f"caused by misuse, unauthorized modification, or external factors beyond the manufacturer's control."
+        )
+    else:  # FINAL ACCEPTANCE CERTIFICATE
+        handover_date = order.handover_at.strftime("%Y-%m-%d") if order.handover_at else "handover"
+        final_date = order.final_accepted_at.strftime("%Y-%m-%d") if order.final_accepted_at else datetime.utcnow().strftime("%Y-%m-%d")
+        statement = (
+            f"This is to certify that the goods/equipment supplied under Order SO-{order.id} — {item_desc} — "
+            f"have satisfactorily completed the trial period following handover on {handover_date}, and are "
+            f"hereby finally accepted by the Customer as of {final_date}. This Final Acceptance concludes the "
+            f"delivery and commissioning obligations of {company_name} under this order, without prejudice to "
+            f"any warranty obligations still in effect."
+        )
+
+    elements.append(Paragraph(statement, body_style))
+    elements.append(Spacer(1, 20 * mm))
+
+    sig_rows = [
+        ["Company Representative:", "___________________________", "Date:", "______________"],
+        ["Customer Representative:", "___________________________", "Date:", "______________"],
+    ]
+    sig_table = Table(sig_rows, colWidths=[40 * mm, 65 * mm, 15 * mm, 30 * mm])
+    sig_table.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 16),
+    ]))
+    elements.append(sig_table)
+
+    elements.append(Spacer(1, 15 * mm))
+    elements.append(Paragraph("Designed & Developed by Tesfaye Alemayehu", styles["Normal"]))
+
+    doc.build(elements)
+    return buffer.getvalue()
+
+
+def generate_credit_note_pdf(company_name: str, order, credit_note,
+                              logo_base64: str = None, logo_mime: str = None) -> bytes:
+    """Generates a Credit Note — a correction against an order (overcharge, return,
+    price adjustment). An order can have several of these, each independently dated."""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=15 * mm, bottomMargin=20 * mm)
+    styles = getSampleStyleSheet()
+
+    elements = []
+
+    name_block = [
+        Paragraph(f"<b>{company_name}</b>", styles["Title"]),
+        Paragraph("CREDIT NOTE", styles["Heading2"]),
+    ]
+
+    if logo_base64:
+        try:
+            logo_bytes = base64.b64decode(logo_base64)
+            logo_img = Image(io.BytesIO(logo_bytes))
+            max_width, max_height = 35 * mm, 25 * mm
+            ratio = min(max_width / logo_img.imageWidth, max_height / logo_img.imageHeight)
+            logo_img.drawWidth = logo_img.imageWidth * ratio
+            logo_img.drawHeight = logo_img.imageHeight * ratio
+            header_table = Table([[logo_img, name_block]], colWidths=[40 * mm, 130 * mm])
+            header_table.setStyle(TableStyle([
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (0, 0), (0, 0), "LEFT"),
+            ]))
+            elements.append(header_table)
+        except Exception:
+            elements.extend(name_block)
+    else:
+        elements.extend(name_block)
+
+    elements.append(Spacer(1, 10 * mm))
+
+    meta = [
+        ["Credit Note #:", f"SO-{order.id}-C{credit_note.id}"],
+        ["Date:", credit_note.created_at.strftime("%Y-%m-%d")],
+        ["Customer:", order.customer_name],
+        ["Order Reference:", f"SO-{order.id}"],
+        ["Issued By:", credit_note.issued_by],
+    ]
+    meta_table = Table(meta, colWidths=[40 * mm, 115 * mm])
+    meta_table.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(meta_table)
+    elements.append(Spacer(1, 10 * mm))
+
+    amount_rows = [["Amount Credited:", f"{credit_note.amount:,.2f} {order.currency}"]]
+    amount_table = Table(amount_rows, colWidths=[55 * mm, 100 * mm])
+    amount_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#fdecea")),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTNAME", (1, 0), (1, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 12),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#dddddd")),
+    ]))
+    elements.append(amount_table)
+    elements.append(Spacer(1, 8 * mm))
+
+    elements.append(Paragraph("<b>Reason</b>", styles["Heading4"]))
+    elements.append(Paragraph(credit_note.reason, styles["Normal"]))
+
+    elements.append(Spacer(1, 15 * mm))
+    elements.append(Paragraph("Designed & Developed by Tesfaye Alemayehu", styles["Normal"]))
+
+    doc.build(elements)
+    return buffer.getvalue()

@@ -97,6 +97,11 @@ with engine.connect() as conn:
         conn.execute(text("ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS downpayment_percent FLOAT"))
         conn.execute(text("ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS payment_terms VARCHAR"))
         conn.execute(text("ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS vat_percent FLOAT DEFAULT 15.0"))
+        conn.execute(text("ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS warranty_months INTEGER DEFAULT 12"))
+        conn.execute(text("ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS shipped_at TIMESTAMP"))
+        conn.execute(text("ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS testing_completed_at TIMESTAMP"))
+        conn.execute(text("ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS handover_at TIMESTAMP"))
+        conn.execute(text("ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS final_accepted_at TIMESTAMP"))
         conn.commit()
     except Exception:
         pass
@@ -369,6 +374,35 @@ def billing_return_page():
 
 # ============ SALES ORDERS (document lifecycle: Proforma -> Invoice -> ... ) ============
 
+def _sales_order_to_out(db: Session, order: models.SalesOrder) -> schemas.SalesOrderOut:
+    """Shared builder — queries this order's line items, payments, and credit notes
+    and assembles the full SalesOrderOut. Used everywhere a SalesOrder is returned,
+    so every endpoint stays consistent and new fields only need to be added once."""
+    line_items = db.query(models.SalesOrderLineItem).filter(
+        models.SalesOrderLineItem.sales_order_id == order.id
+    ).all()
+    payments = db.query(models.SalesOrderPayment).filter(
+        models.SalesOrderPayment.sales_order_id == order.id
+    ).order_by(models.SalesOrderPayment.created_at).all()
+    credit_notes = db.query(models.SalesOrderCreditNote).filter(
+        models.SalesOrderCreditNote.sales_order_id == order.id
+    ).order_by(models.SalesOrderCreditNote.created_at).all()
+
+    return schemas.SalesOrderOut(
+        id=order.id, employee_id=order.employee_id, customer_name=order.customer_name,
+        customer_contact=order.customer_contact, currency=order.currency, status=order.status,
+        note=order.note, validity_days=order.validity_days, delivery_terms=order.delivery_terms,
+        downpayment_percent=order.downpayment_percent, payment_terms=order.payment_terms,
+        vat_percent=order.vat_percent, warranty_months=order.warranty_months,
+        shipped_at=order.shipped_at, testing_completed_at=order.testing_completed_at,
+        handover_at=order.handover_at, final_accepted_at=order.final_accepted_at,
+        created_at=order.created_at, updated_at=order.updated_at,
+        line_items=[schemas.LineItemOut.model_validate(li) for li in line_items],
+        payments=[schemas.PaymentOut.model_validate(p) for p in payments],
+        credit_notes=[schemas.CreditNoteOut.model_validate(c) for c in credit_notes],
+    )
+
+
 @app.post("/sales-orders", response_model=schemas.SalesOrderOut)
 def create_sales_order(
     payload: schemas.SalesOrderCreate,
@@ -386,7 +420,7 @@ def create_sales_order(
         currency=payload.currency, note=payload.note, status="proforma",
         validity_days=payload.validity_days, delivery_terms=payload.delivery_terms,
         downpayment_percent=payload.downpayment_percent, payment_terms=payload.payment_terms,
-        vat_percent=payload.vat_percent,
+        vat_percent=payload.vat_percent, warranty_months=payload.warranty_months,
     )
     db.add(order)
     db.commit()
@@ -399,17 +433,7 @@ def create_sales_order(
         ))
     db.commit()
 
-    line_items = db.query(models.SalesOrderLineItem).filter(models.SalesOrderLineItem.sales_order_id == order.id).all()
-
-    return schemas.SalesOrderOut(
-        id=order.id, employee_id=order.employee_id, customer_name=order.customer_name,
-        customer_contact=order.customer_contact, currency=order.currency, status=order.status,
-        note=order.note, validity_days=order.validity_days, delivery_terms=order.delivery_terms,
-        downpayment_percent=order.downpayment_percent, payment_terms=order.payment_terms,
-        vat_percent=order.vat_percent,
-        created_at=order.created_at, updated_at=order.updated_at,
-        line_items=[schemas.LineItemOut.model_validate(li) for li in line_items],
-    )
+    return _sales_order_to_out(db, order)
 
 
 @app.get("/sales-orders", response_model=List[schemas.SalesOrderOut])
@@ -421,25 +445,7 @@ def list_sales_orders(
         models.SalesOrder.company_id == company.id
     ).order_by(models.SalesOrder.created_at.desc()).all()
 
-    result = []
-    for order in orders:
-        line_items = db.query(models.SalesOrderLineItem).filter(
-            models.SalesOrderLineItem.sales_order_id == order.id
-        ).all()
-        payments = db.query(models.SalesOrderPayment).filter(
-            models.SalesOrderPayment.sales_order_id == order.id
-        ).order_by(models.SalesOrderPayment.created_at).all()
-        result.append(schemas.SalesOrderOut(
-            id=order.id, employee_id=order.employee_id, customer_name=order.customer_name,
-            customer_contact=order.customer_contact, currency=order.currency, status=order.status,
-            note=order.note, validity_days=order.validity_days, delivery_terms=order.delivery_terms,
-            downpayment_percent=order.downpayment_percent, payment_terms=order.payment_terms,
-            vat_percent=order.vat_percent,
-            created_at=order.created_at, updated_at=order.updated_at,
-            line_items=[schemas.LineItemOut.model_validate(li) for li in line_items],
-            payments=[schemas.PaymentOut.model_validate(p) for p in payments],
-        ))
-    return result
+    return [_sales_order_to_out(db, order) for order in orders]
 
 
 @app.put("/sales-orders/{order_id}/confirm", response_model=schemas.SalesOrderOut)
@@ -464,19 +470,8 @@ async def confirm_sales_order(
     db.commit()
     db.refresh(order)
 
-    line_items = db.query(models.SalesOrderLineItem).filter(models.SalesOrderLineItem.sales_order_id == order.id).all()
-
     await manager.broadcast_to_company(company.id, {"kind": "sales_orders_changed"})
-
-    return schemas.SalesOrderOut(
-        id=order.id, employee_id=order.employee_id, customer_name=order.customer_name,
-        customer_contact=order.customer_contact, currency=order.currency, status=order.status,
-        note=order.note, validity_days=order.validity_days, delivery_terms=order.delivery_terms,
-        downpayment_percent=order.downpayment_percent, payment_terms=order.payment_terms,
-        vat_percent=order.vat_percent,
-        created_at=order.created_at, updated_at=order.updated_at,
-        line_items=[schemas.LineItemOut.model_validate(li) for li in line_items],
-    )
+    return _sales_order_to_out(db, order)
 
 
 @app.put("/sales-orders/{order_id}/ship", response_model=schemas.SalesOrderOut)
@@ -496,24 +491,129 @@ async def ship_sales_order(
         raise HTTPException(status_code=400, detail=f"Order must be 'confirmed' before it can be marked shipped (currently '{order.status}')")
 
     order.status = "shipped"
+    order.shipped_at = datetime.utcnow()
     order.updated_at = datetime.utcnow()
     db.add(order)
     db.commit()
     db.refresh(order)
 
-    line_items = db.query(models.SalesOrderLineItem).filter(models.SalesOrderLineItem.sales_order_id == order.id).all()
+    await manager.broadcast_to_company(company.id, {"kind": "sales_orders_changed"})
+    return _sales_order_to_out(db, order)
+
+
+@app.put("/sales-orders/{order_id}/mark-testing-complete", response_model=schemas.SalesOrderOut)
+async def mark_testing_complete(
+    order_id: int,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    """Owner-only: moves an order from 'paid' to 'testing' once on-site testing is
+    complete, which unlocks the Provisional Acceptance Certificate."""
+    order = db.query(models.SalesOrder).filter(
+        models.SalesOrder.id == order_id, models.SalesOrder.company_id == company.id
+    ).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+    if order.status != "paid":
+        raise HTTPException(status_code=400, detail=f"Order must be fully 'paid' before testing can be marked complete (currently '{order.status}')")
+
+    order.status = "testing"
+    order.testing_completed_at = datetime.utcnow()
+    order.updated_at = datetime.utcnow()
+    db.add(order)
+    db.commit()
+    db.refresh(order)
 
     await manager.broadcast_to_company(company.id, {"kind": "sales_orders_changed"})
+    return _sales_order_to_out(db, order)
 
-    return schemas.SalesOrderOut(
-        id=order.id, employee_id=order.employee_id, customer_name=order.customer_name,
-        customer_contact=order.customer_contact, currency=order.currency, status=order.status,
-        note=order.note, validity_days=order.validity_days, delivery_terms=order.delivery_terms,
-        downpayment_percent=order.downpayment_percent, payment_terms=order.payment_terms,
-        vat_percent=order.vat_percent,
-        created_at=order.created_at, updated_at=order.updated_at,
-        line_items=[schemas.LineItemOut.model_validate(li) for li in line_items],
+
+@app.put("/sales-orders/{order_id}/mark-handover", response_model=schemas.SalesOrderOut)
+async def mark_handover(
+    order_id: int,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    """Owner-only: moves an order from 'testing' to 'handover', which unlocks the
+    Warranty Certificate (its coverage period is calculated from this date)."""
+    order = db.query(models.SalesOrder).filter(
+        models.SalesOrder.id == order_id, models.SalesOrder.company_id == company.id
+    ).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+    if order.status != "testing":
+        raise HTTPException(status_code=400, detail=f"Site testing must be marked complete before handover (currently '{order.status}')")
+
+    order.status = "handover"
+    order.handover_at = datetime.utcnow()
+    order.updated_at = datetime.utcnow()
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+
+    await manager.broadcast_to_company(company.id, {"kind": "sales_orders_changed"})
+    return _sales_order_to_out(db, order)
+
+
+@app.put("/sales-orders/{order_id}/mark-final", response_model=schemas.SalesOrderOut)
+async def mark_final_acceptance(
+    order_id: int,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    """Owner-only: moves an order from 'handover' to 'final' once the trial period
+    has completed successfully, which unlocks the Final Acceptance Certificate."""
+    order = db.query(models.SalesOrder).filter(
+        models.SalesOrder.id == order_id, models.SalesOrder.company_id == company.id
+    ).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+    if order.status != "handover":
+        raise HTTPException(status_code=400, detail=f"Order must be at 'handover' before final acceptance (currently '{order.status}')")
+
+    order.status = "final"
+    order.final_accepted_at = datetime.utcnow()
+    order.updated_at = datetime.utcnow()
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+
+    await manager.broadcast_to_company(company.id, {"kind": "sales_orders_changed"})
+    return _sales_order_to_out(db, order)
+
+
+@app.post("/sales-orders/{order_id}/credit-notes", response_model=schemas.CreditNoteOut)
+async def issue_credit_note(
+    order_id: int,
+    payload: schemas.CreditNoteCreate,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    """Owner-only. Unlike the sequential stages above, a credit note (overcharge,
+    return, price correction) can be issued at any point once an order is a firm
+    order — it isn't tied to a particular stage."""
+    order = db.query(models.SalesOrder).filter(
+        models.SalesOrder.id == order_id, models.SalesOrder.company_id == company.id
+    ).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+    if order.status == "proforma":
+        raise HTTPException(status_code=400, detail="Confirm this order first — a credit note can only be issued against a firm order")
+    if payload.amount <= 0:
+        raise HTTPException(status_code=400, detail="Credit amount must be greater than zero")
+    if not payload.reason.strip():
+        raise HTTPException(status_code=400, detail="A reason is required for a credit note")
+
+    credit_note = models.SalesOrderCreditNote(
+        sales_order_id=order.id, amount=payload.amount, reason=payload.reason,
+        issued_by=company.dashboard_username,
     )
+    db.add(credit_note)
+    db.commit()
+    db.refresh(credit_note)
+
+    await manager.broadcast_to_company(company.id, {"kind": "sales_orders_changed"})
+    return credit_note
 
 
 @app.put("/company/bank-details")
@@ -718,6 +818,124 @@ def download_payment_receipt(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="Receipt_SO-{order.id}-{payment.id}.pdf"'}
+    )
+
+
+@app.get("/sales-orders/{order_id}/document/provisional-acceptance")
+def download_provisional_acceptance(
+    order_id: int,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    order = db.query(models.SalesOrder).filter(
+        models.SalesOrder.id == order_id, models.SalesOrder.company_id == company.id
+    ).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+    if order.status in ("proforma", "confirmed", "shipped", "paid"):
+        raise HTTPException(status_code=400, detail="Mark site testing complete first — this certificate is only available once testing is done")
+
+    line_items = db.query(models.SalesOrderLineItem).filter(models.SalesOrderLineItem.sales_order_id == order.id).all()
+
+    pdf_bytes = documents.generate_certificate_pdf(
+        "PROVISIONAL ACCEPTANCE CERTIFICATE", company.name, order, line_items,
+        company.logo_image, company.logo_mime,
+    )
+
+    from fastapi.responses import Response
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="ProvisionalAcceptance_SO-{order.id}.pdf"'}
+    )
+
+
+@app.get("/sales-orders/{order_id}/document/warranty-certificate")
+def download_warranty_certificate(
+    order_id: int,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    order = db.query(models.SalesOrder).filter(
+        models.SalesOrder.id == order_id, models.SalesOrder.company_id == company.id
+    ).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+    if order.status in ("proforma", "confirmed", "shipped", "paid", "testing"):
+        raise HTTPException(status_code=400, detail="Mark handover first — the warranty certificate is only available from that point")
+
+    line_items = db.query(models.SalesOrderLineItem).filter(models.SalesOrderLineItem.sales_order_id == order.id).all()
+
+    pdf_bytes = documents.generate_certificate_pdf(
+        "WARRANTY CERTIFICATE", company.name, order, line_items,
+        company.logo_image, company.logo_mime,
+    )
+
+    from fastapi.responses import Response
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="WarrantyCertificate_SO-{order.id}.pdf"'}
+    )
+
+
+@app.get("/sales-orders/{order_id}/document/final-acceptance")
+def download_final_acceptance(
+    order_id: int,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    order = db.query(models.SalesOrder).filter(
+        models.SalesOrder.id == order_id, models.SalesOrder.company_id == company.id
+    ).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+    if order.status != "final":
+        raise HTTPException(status_code=400, detail="Mark final acceptance first — this certificate is only available once the trial period is complete")
+
+    line_items = db.query(models.SalesOrderLineItem).filter(models.SalesOrderLineItem.sales_order_id == order.id).all()
+
+    pdf_bytes = documents.generate_certificate_pdf(
+        "FINAL ACCEPTANCE CERTIFICATE", company.name, order, line_items,
+        company.logo_image, company.logo_mime,
+    )
+
+    from fastapi.responses import Response
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="FinalAcceptance_SO-{order.id}.pdf"'}
+    )
+
+
+@app.get("/sales-orders/{order_id}/credit-notes/{credit_note_id}/document/credit-note")
+def download_credit_note(
+    order_id: int,
+    credit_note_id: int,
+    db: Session = Depends(get_db),
+    company: models.Company = Depends(auth.get_company_from_dashboard_login)
+):
+    order = db.query(models.SalesOrder).filter(
+        models.SalesOrder.id == order_id, models.SalesOrder.company_id == company.id
+    ).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+
+    credit_note = db.query(models.SalesOrderCreditNote).filter(
+        models.SalesOrderCreditNote.id == credit_note_id, models.SalesOrderCreditNote.sales_order_id == order.id
+    ).first()
+    if not credit_note:
+        raise HTTPException(status_code=404, detail="Credit note not found")
+
+    pdf_bytes = documents.generate_credit_note_pdf(
+        company.name, order, credit_note, company.logo_image, company.logo_mime,
+    )
+
+    from fastapi.responses import Response
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="CreditNote_SO-{order.id}-{credit_note.id}.pdf"'}
     )
 
 

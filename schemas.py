@@ -110,6 +110,7 @@ class SalesOrderCreate(BaseModel):
     downpayment_percent: Optional[float] = None
     payment_terms: Optional[str] = None
     vat_percent: float = 15.0
+    warranty_months: Optional[int] = 12
     line_items: List[LineItemCreate]
 
 
@@ -144,6 +145,23 @@ class PaymentOut(BaseModel):
         from_attributes = True
 
 
+class CreditNoteCreate(BaseModel):
+    amount: float
+    reason: str
+
+
+class CreditNoteOut(BaseModel):
+    id: int
+    sales_order_id: int
+    amount: float
+    reason: str
+    issued_by: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class SalesOrderOut(BaseModel):
     id: int
     employee_id: str
@@ -157,10 +175,16 @@ class SalesOrderOut(BaseModel):
     downpayment_percent: Optional[float]
     payment_terms: Optional[str]
     vat_percent: float = 15.0
+    warranty_months: Optional[int] = 12
+    shipped_at: Optional[datetime] = None
+    testing_completed_at: Optional[datetime] = None
+    handover_at: Optional[datetime] = None
+    final_accepted_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
     line_items: List[LineItemOut] = []
     payments: List[PaymentOut] = []
+    credit_notes: List[CreditNoteOut] = []
 
     class Config:
         from_attributes = True
